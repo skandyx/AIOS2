@@ -1,644 +1,724 @@
-# AIOS — AI Operating System
+<div align="center">
 
-> Plateforme avancée d'assistant IA autonome et évolutif, inspirée de Jarvis et OpenClaw.
-> Un véritable **AI Operating System** modulaire capable d'interactions vocales, de raisonnement avancé,
-> de mémoire persistante, d'automatisation intelligente et d'orchestration multi-agents.
+# 🧠 AIOS — AI Operating System
 
----
+**A modular, production-ready AI platform for voice interaction, advanced reasoning, persistent memory, intelligent automation, and multi-agent orchestration.**
 
-## Table des matières
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)](https://www.typescriptlang.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?logo=prisma)](https://www.prisma.io/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-- [Vue d'ensemble](#vue-densemble)
-- [Architecture](#architecture)
-- [Modules](#modules)
-- [Stack technique](#stack-technique)
-- [Structure du projet](#structure-du-projet)
-- [Installation](#installation)
-  - [Installation automatique (recommandée)](#installation-automatique-recommandée)
-  - [Installation manuelle](#installation-manuelle)
-  - [Configuration](#configuration)
-- [Utilisation](#utilisation)
-- [API Reference](#api-reference)
-- [Modèle de données](#modèle-de-données)
-- [Services](#services)
-- [Raccourcis clavier](#raccourcis-clavier)
-- [Sécurité](#sécurité)
-- [Dépannage](#dépannage)
-- [Roadmap](#roadmap)
-- [Licence](#licence)
+Inspired by **Jarvis** and **OpenClaw** • Built with Next.js 16, React 19, and TypeScript 5
+
+[Features](#-features) • [Quick Start](#-quick-start) • [Configuration](#-configuration) • [API Reference](#-api-reference) • [Architecture](#-architecture) • [Deployment](#-deployment)
+
+</div>
 
 ---
 
-## Vue d'ensemble
+## 📋 Table of Contents
 
-AIOS est un système d'exploitation IA de niveau production qui agit comme une couche intelligente capable de :
+- [Overview](#-overview)
+- [Features](#-features)
+- [Tech Stack](#-tech-stack)
+- [Quick Start](#-quick-start)
+- [Configuration](#-configuration)
+- [Modules](#-modules)
+- [API Reference](#-api-reference)
+- [AI Providers](#-ai-providers)
+- [Database Schema](#-database-schema)
+- [WebSocket Service](#-websocket-service)
+- [Project Structure](#-project-structure)
+- [Best Practices](#-best-practices)
+- [Deployment](#-deployment)
+- [Contributing](#-contributing)
+- [License](#-license)
 
-| Capacité | Description |
+---
+
+## 🌟 Overview
+
+AIOS is a comprehensive AI Operating System that unifies conversational AI, voice interaction, multi-agent orchestration, persistent memory, visual workflows, and external service integrations into a single, cohesive platform. Whether you're building an AI assistant, automating complex workflows, or orchestrating teams of specialized agents, AIOS provides the infrastructure to do it all.
+
+### Why AIOS?
+
+| Capability | Description |
 |---|---|
-| **Comprendre le langage naturel** | Chat IA multi-tours avec LLM (GPT-4, Claude, Mistral…) |
-| **Interagir vocalement** | Reconnaissance vocale (ASR) et synthèse vocale (TTS) |
-| **Apprendre avec le temps** | Mémoire persistante hiérarchique (10 types de mémoire) |
-| **Exécuter des tâches complexes** | Moteur de tâches autonome avec priorités et parallélisation |
-| **Automatiser des workflows** | Moteur de workflows visuels avec nœuds et conditions |
-| **Orchestrer plusieurs agents** | 14 agents spécialisés collaboratifs |
-| **Générer du code et des images** | Développement logiciel autonome + génération d'images IA |
-| **S'intégrer aux services externes** | MCP, Gmail, GitHub, Slack, Notion, Jira… |
-| **Fonctionner offline** | Support de modèles locaux via Ollama |
+| 🗣️ **Voice-First** | Speech-to-text and text-to-speech for natural interaction |
+| 🧠 **Persistent Memory** | 11 memory types across short-term, long-term, procedural, and more |
+| 🤖 **Multi-Agent** | 14 specialized agent types working in concert |
+| 🔌 **Extensible** | 12 pre-configured plugins + 12 integration types + custom MCP |
+| 🔒 **Secure** | 5 autonomy levels with granular permission matrices |
+| 📊 **Observable** | Real-time monitoring, audit logging, and health dashboards |
+| 🔄 **Visual Workflows** | Drag-and-drop workflow engine with 7 node types |
+| 🌐 **Multi-Provider** | 7 AI providers with seamless switching |
 
 ---
 
-## Architecture
+## ✨ Features
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        AIOS Dashboard                           │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
-│  │  AI Chat  │  │  Voice   │  │  Agents  │  │  Memory  │      │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘      │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
-│  │Workflows │  │Monitoring│  │ Plugins  │  │  Models  │      │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘      │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐                    │
-│  │ Terminal │  │ Security │  │  MCP /   │                    │
-│  │          │  │          │  │Integrations│                   │
-│  └──────────┘  └──────────┘  └──────────┘                    │
-├─────────────────────────────────────────────────────────────────┤
-│                     Next.js API Routes                          │
-│  /api/chat  /api/voice  /api/agents  /api/memory  /api/tasks  │
-│  /api/workflows  /api/plugins  /api/integrations  /api/models  │
-│  /api/monitoring  /api/generate-image  /api/conversations      │
-├─────────────────────────────────────────────────────────────────┤
-│                     Service Layer                               │
-│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐   │
-│  │   LLM Engine   │  │   ASR Engine   │  │ Image Generator│   │
-│  │ (z-ai-web-dev- │  │ (z-ai-web-dev- │  │ (z-ai-web-dev- │   │
-│  │     sdk)       │  │     sdk)       │  │     sdk)       │   │
-│  └────────────────┘  └────────────────┘  └────────────────┘   │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐   │
-│  │  Prisma ORM    │  │  Zustand Store │  │ Socket.io WS   │   │
-│  │  (SQLite)      │  │  (Client State)│  │ (Real-time)    │   │
-│  └────────────────┘  └────────────────┘  └────────────────┘   │
-├─────────────────────────────────────────────────────────────────┤
-│                     Reverse Proxy / Gateway                     │
-│                     Caddy (port 81 → 3000)                      │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Flux de communication
-
-```
-Navigateur ←→ Caddy (port 81) ←→ Next.js (port 3000) ←→ SQLite / API
-                                      ↕
-                               Socket.io (port 3003) ←→ Real-time events
-```
+- **AI Chat** — Full-featured conversational AI with system prompt presets, model selection, markdown rendering, and syntax-highlighted code blocks
+- **Voice Interaction** — Speech-to-text transcription and text-to-speech synthesis for hands-free operation
+- **Multi-Agent Orchestration** — 14 specialized agent types (Coder, Researcher, Planner, Reviewer, Tester, etc.) coordinated for complex tasks
+- **Persistent Memory** — 11 memory types ensuring context is never lost across sessions
+- **Visual Workflows** — Drag-and-drop workflow builder with 7 node types for automating complex processes
+- **Real-Time Monitoring** — System metrics, health checks, and performance dashboards
+- **Plugin Marketplace** — 12 pre-configured plugins for extending functionality
+- **Multi-Provider AI** — Unified interface across 7 AI providers with easy switching
+- **Terminal Interface** — In-browser command terminal for power users
+- **Security Framework** — 5 autonomy levels, permission matrices, and comprehensive audit logging
+- **External Integrations** — Gmail, Calendar, GitHub, Slack, Notion, Jira, Trello, Discord, Linear, Figma, Drive, Sheets, custom MCP, and webhooks
 
 ---
 
-## Modules
+## 🛠 Tech Stack
 
-### 💬 AI Chat
-- Chat IA multi-tours avec réponses en streaming
-- Rendu Markdown et coloration syntaxique du code
-- Prompts système personnalisables (6 presets)
-- Historique des conversations avec recherche
-- Compteur de tokens
-
-### 🎤 Voice
-- Reconnaissance vocale temps réel via ASR (Whisper)
-- Visualisation audio avec Canvas + AnalyserNode
-- Indicateur de niveau audio
-- Transcription multi-langues (7 langues)
-- Envoi des transcriptions vers le chat
-
-### 🤖 Agents
-- 14 agents spécialisés pré-configurés :
-  - 🧠 Coordinator, 💻 Developer, 🔒 Security, 🧠 Memory
-  - 🔍 Research, ⚙️ System, 📊 Monitoring, 🔄 Workflow
-  - 🎤 Voice, 👁️ Vision, 📝 Document, 🔗 MCP
-  - 🤔 Reasoning, 📋 Planning
-- Indicateurs de statut (active/idle/busy/error)
-- Journal de communication inter-agents
-- Assignation de tâches aux agents
-
-### 🧠 Memory
-- 10 types de mémoire : short_term, long_term, contextual, procedural, user, system, project, error, workflow, skill
-- Score d'importance (0-100%)
-- Compteur d'accès et statistiques
-- Vue grille et timeline
-- Recherche sémantique
-
-### 🔄 Workflows
-- Éditeur visuel de workflows
-- 7 types de nœuds : Trigger, AI Agent, Tool, Condition, Output, Delay, Loop
-- Contrôles d'exécution (Run, Stop, Pause)
-- Historique des exécutions
-- Variables et versionnage
-
-### 📊 Monitoring
-- Métriques temps réel : CPU, RAM, Agents actifs, Tâches
-- Graphiques recharts (AreaChart, BarChart)
-- Feed d'activité des agents
-- Centre de notifications
-- Score de santé système
-
-### 🧩 Plugins
-- 12 plugins pré-configurés (GPT-4, DALL-E, Whisper, Web Search…)
-- Marketplace avec ratings et downloads
-- Activation/désactivation par switch
-- Filtrage par catégorie (8 catégories)
-
-### ⚡ AI Models
-- 9 modèles IA sur 6 providers (OpenAI, Anthropic, Mistral, Google, DeepSeek, Ollama)
-- Barres de rating vitesse/qualité/coût
-- Mode comparaison (jusqu'à 3 modèles)
-- Configuration température/max tokens
-- Chaîne de fallback configurable
-
-### 💻 Terminal
-- Interface terminal avec commandes intégrées
-- 9 commandes : `help`, `status`, `agents`, `tasks`, `memory`, `clear`, `run`, `chat`, `scan`
-- Historique de commandes (↑/↓)
-- Autocomplete avec Tab
-- Coloration syntaxique
-
-### 🔒 Security
-- 5 niveaux d'autonomie : Manuel → Pleinement Autonome
-- Matrice de permissions (8 actions × 5 niveaux)
-- Score de sécurité avec jauge circulaire
-- Journal d'audit
-- Zone de danger avec actions critiques
-
-### 🔗 Integrations
-- 12 intégrations : Gmail, Calendar, Drive, Notion, Slack, Discord, GitHub, GitLab, Jira, Trello, SQL, REST API
-- Statut de connexion OAuth
-- Historique de synchronisation
-- Configuration par dialogue
+| Category | Technology |
+|---|---|
+| **Framework** | Next.js 16 (App Router) + React 19 + TypeScript 5 |
+| **Styling** | Tailwind CSS 4 + shadcn/ui (New York) + Framer Motion |
+| **Database** | Prisma ORM + SQLite |
+| **Real-Time** | Socket.io WebSocket (port 3003) |
+| **State** | Zustand |
+| **AI SDK** | z-ai-web-dev-sdk (built-in) + external providers |
+| **Runtime** | Node.js 18+ / Bun |
 
 ---
 
-## Stack technique
+## 🚀 Quick Start
 
-| Composant | Technologie | Version |
+### Prerequisites
+
+| Requirement | Version | Install |
 |---|---|---|
-| **Framework** | Next.js (App Router) | 16.x |
-| **Langage** | TypeScript | 5.x |
-| **Runtime** | Bun | 1.x |
-| **Styling** | Tailwind CSS 4 + shadcn/ui | - |
-| **Base de données** | SQLite via Prisma ORM | 6.x |
-| **State management** | Zustand | 5.x |
-| **Animations** | Framer Motion | 12.x |
-| **Charts** | Recharts | 2.x |
-| **Temps réel** | Socket.io | 4.x |
-| **AI SDK** | z-ai-web-dev-sdk | 0.0.18 |
-| **Reverse proxy** | Caddy | - |
-| **Icônes** | Lucide React | 0.525+ |
-| **Markdown** | react-markdown + react-syntax-highlighter | - |
+| Node.js | 18+ | `curl -fsSL https://deb.nodesource.com/setup_20.x \| sudo -E bash - && sudo apt install -y nodejs` |
+| Bun | Latest | `curl -fsSL https://bun.sh/install \| bash` |
+| Git | Latest | `sudo apt install -y git` |
 
-### Dépendances système
-
-| Paquet | Usage | Requis |
-|---|---|---|
-| `bun` | Runtime JavaScript | ✅ Oui |
-| `node` | Compatibilité Prisma/Next.js | ✅ Oui (≥18) |
-| `caddy` | Reverse proxy / Gateway | ✅ Oui |
-
----
-
-## Structure du projet
-
-```
-my-project/
-├── src/
-│   ├── app/
-│   │   ├── layout.tsx              # Layout racine (dark mode par défaut)
-│   │   ├── page.tsx                # Dashboard principal AIOS
-│   │   ├── globals.css             # Thème futuriste AIOS
-│   │   └── api/                    # Routes API (18 endpoints)
-│   │       ├── chat/route.ts       # Chat IA avec LLM
-│   │       ├── conversations/      # Gestion conversations
-│   │       ├── memory/route.ts     # Système de mémoire
-│   │       ├── agents/             # Gestion agents
-│   │       ├── tasks/              # Gestion tâches
-│   │       ├── workflows/          # Moteur workflows
-│   │       ├── plugins/            # Gestion plugins
-│   │       ├── integrations/       # Intégrations MCP
-│   │       ├── voice/route.ts      # Reconnaissance vocale (ASR)
-│   │       ├── generate-image/     # Génération d'images IA
-│   │       └── monitoring/         # Métriques système
-│   ├── components/
-│   │   ├── modules/                # 11 modules AIOS
-│   │   │   ├── ChatModule.tsx
-│   │   │   ├── VoiceModule.tsx
-│   │   │   ├── AgentsModule.tsx
-│   │   │   ├── MemoryModule.tsx
-│   │   │   ├── WorkflowsModule.tsx
-│   │   │   ├── MonitoringModule.tsx
-│   │   │   ├── PluginsModule.tsx
-│   │   │   ├── ModelsModule.tsx
-│   │   │   ├── TerminalModule.tsx
-│   │   │   ├── SecurityModule.tsx
-│   │   │   └── IntegrationsModule.tsx
-│   │   └── ui/                     # shadcn/ui components
-│   ├── lib/
-│   │   ├── store.ts                # Zustand global store
-│   │   ├── db.ts                   # Prisma client singleton
-│   │   ├── auth.ts                 # Helper auth utilisateur par défaut
-│   │   └── utils.ts                # Utilitaires (cn, etc.)
-│   └── hooks/                      # Hooks React personnalisés
-├── prisma/
-│   └── schema.prisma               # Schéma DB (10 modèles)
-├── db/
-│   └── custom.db                   # Base SQLite
-├── mini-services/
-│   └── aios-ws/                    # Service WebSocket Socket.io
-│       ├── index.ts                # Serveur WS (port 3003)
-│       └── package.json
-├── Caddyfile                       # Configuration reverse proxy
-├── install.sh                      # Script d'installation automatique
-├── requirements.txt                # Dépendances système
-├── package.json                    # Dépendances npm
-└── README.md                       # Ce fichier
-```
-
----
-
-## Installation
-
-### Prérequis
-
-| Prérequis | Version minimale | Vérification |
-|---|---|---|
-| **OS** | Debian 11+ / Ubuntu 20.04+ | `cat /etc/os-release` |
-| **RAM** | 2 Go minimum | `free -h` |
-| **Disque** | 1 Go libre | `df -h` |
-| **Réseau** | Accès Internet | `ping -c 1 google.com` |
-
-### Installation automatique (recommandée)
+### Installation
 
 ```bash
-# Cloner le dépôt
-git clone <repo-url> && cd my-project
+# 1. Clone the repository
+git clone https://github.com/your-org/aios.git
+cd aios/my-project
 
-# Rendre le script exécutable
-chmod +x install.sh
-
-# Lancer l'installation complète
-sudo ./install.sh
-```
-
-Le script `install.sh` effectue :
-1. Vérification de l'OS (Debian/Ubuntu)
-2. Installation des dépendances système (curl, unzip, git, etc.)
-3. Installation de Bun runtime
-4. Installation de Node.js (pour Prisma)
-5. Installation des dépendances npm du projet
-6. Installation du mini-service WebSocket
-7. Initialisation de la base de données (Prisma push)
-8. Démarrage des services
-9. Vérification de santé
-
-Options du script :
-```bash
-sudo ./install.sh --skip-system    # Ne pas installer les paquets système
-sudo ./install.sh --skip-bun       # Ne pas installer Bun (déjà installé)
-sudo ./install.sh --dev            # Mode développement (avec hot-reload)
-sudo ./install.sh --prod           # Mode production (build + start)
-sudo ./install.sh --help           # Afficher l'aide
-```
-
-### Installation manuelle
-
-#### 1. Installer les dépendances système
-
-```bash
-sudo apt update && sudo apt install -y \
-  curl unzip git build-essential python3 \
-  ca-certificates gnupg
-```
-
-#### 2. Installer Bun
-
-```bash
-curl -fsSL https://bun.sh/install | bash
-source ~/.bashrc
-```
-
-#### 3. Installer Node.js (requis pour Prisma)
-
-```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-```
-
-#### 4. Cloner et installer le projet
-
-```bash
-git clone <repo-url>
-cd my-project
-
-# Installer les dépendances
+# 2. Install dependencies
 bun install
 
-# Installer le service WebSocket
-cd mini-services/aios-ws && bun install && cd ../..
+# 3. Configure environment variables
+cp .env.example .env
+# Edit .env with your API keys (see Configuration section below)
+
+# 4. Initialize the database
+bunx prisma generate
+bunx prisma db push
+
+# 5. Start the development server
+bun dev
+
+# 6. In a separate terminal, start the WebSocket service
+node ws-server.js
 ```
 
-#### 5. Configurer la base de données
+The application will be available at:
+
+| Service | URL |
+|---|---|
+| Next.js App | [http://localhost:3000](http://localhost:3000) |
+| WebSocket Server | `ws://localhost:3003` |
+
+### One-Line Install (Debian/Ubuntu)
 
 ```bash
-# La base SQLite est configurée par défaut avec :
-# DATABASE_URL="file:./db/custom.db"
-bun run db:push
+chmod +x install.sh && ./install.sh
 ```
 
-#### 6. Démarrer les services
+---
 
-```bash
-# Terminal 1 — Application Next.js
-bun run dev
+## ⚙️ Configuration
 
-# Terminal 2 — Service WebSocket
-cd mini-services/aios-ws && bun run dev
-```
+### Environment Variables
 
-L'application est accessible sur **http://localhost:3000** (ou port 81 via Caddy).
-
-### Configuration
-
-#### Variables d'environnement
-
-Créer un fichier `.env` à la racine :
+Create a `.env` file in the project root. Only the built-in **Z-AI provider** requires no API key — all other providers are optional and activated by setting their respective keys.
 
 ```env
-# Base de données (SQLite par défaut)
-DATABASE_URL="file:./db/custom.db"
+# ============================================
+# AIOS — Environment Configuration
+# ============================================
 
-# Port de l'application Next.js (défaut: 3000)
-PORT=3000
+# ── AI Provider API Keys ──────────────────────
+# Z-AI (Built-in) — No key required
+MISTRAL_API_KEY=your_mistral_api_key
+OPENAI_API_KEY=your_openai_api_key
+ANTHROPIC_API_KEY=your_anthropic_api_key
+GOOGLE_API_KEY=your_google_api_key
+DEEPSEEK_API_KEY=your_deepseek_api_key
 
-# Port du service WebSocket (défaut: 3003)
+# ── Local AI (Ollama) ─────────────────────────
+OLLAMA_BASE_URL=http://localhost:11434
+
+# ── Database ──────────────────────────────────
+DATABASE_URL="file:./dev.db"
+
+# ── WebSocket ─────────────────────────────────
 WS_PORT=3003
+
+# ── Application ───────────────────────────────
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-#### Configuration avancée
-
-| Fichier | Usage |
-|---|---|
-| `prisma/schema.prisma` | Schéma de base de données |
-| `Caddyfile` | Configuration du reverse proxy |
-| `src/lib/store.ts` | Store Zustand (état global) |
-| `mini-services/aios-ws/index.ts` | Configuration WebSocket |
+> ⚠️ **Security Warning**: Never commit your `.env` file to version control. The `.gitignore` is configured to exclude it.
 
 ---
 
-## Utilisation
+## 📦 Modules
 
-### Premier démarrage
+### 1. 🤖 AI Chat
 
-1. Ouvrir l'application dans le navigateur
-2. Le module **AI Chat** est actif par défaut
-3. Commencer à taper un message — l'IA répond via le LLM
-4. Naviguer entre les modules avec la barre latérale ou les touches `1` à `0`
+Full-featured conversational AI interface with:
 
-### Commandes du terminal intégré
+- System prompt presets for common use cases
+- Model selection across all configured providers
+- Markdown and syntax-highlighted code rendering
+- Conversation history and management
+- Streaming responses
 
-| Commande | Description |
+### 2. 🗣️ Voice
+
+Natural voice interaction powered by:
+
+- **Speech-to-Text**: Real-time audio transcription
+- **Text-to-Speech**: Natural language audio output
+- Hands-free operation mode
+
+### 3. 🧑‍🤝‍🧑 Agents
+
+Multi-agent orchestration with **14 specialized agent types**:
+
+| Agent Type | Role |
 |---|---|
-| `help` | Afficher les commandes disponibles |
-| `status` | Statut du système |
-| `agents` | Lister les agents actifs |
-| `tasks` | Lister les tâches |
-| `memory` | Lister les mémoires |
-| `clear` | Effacer le terminal |
-| `run <tâche>` | Créer et exécuter une tâche |
-| `chat <message>` | Envoyer un message à l'IA |
-| `scan` | Lancer un scan de sécurité |
+| Coder | Writes and modifies code |
+| Researcher | Gathers and analyzes information |
+| Planner | Creates execution plans |
+| Reviewer | Reviews code and outputs |
+| Tester | Generates and runs tests |
+| Debugger | Diagnoses and fixes issues |
+| Architect | Designs system architecture |
+| Writer | Produces documentation and content |
+| Analyst | Performs data analysis |
+| Coordinator | Orchestrates multi-agent workflows |
+| Optimizer | Improves performance and efficiency |
+| Validator | Verifies correctness and compliance |
+| Explorer | Discovers and evaluates options |
+| Executor | Carries out specific tasks |
+
+### 4. 🧠 Memory
+
+Persistent memory system with **11 memory types**:
+
+| Type | Scope | Purpose |
+|---|---|---|
+| `short_term` | Session | Temporary working memory |
+| `long_term` | Persistent | Permanent knowledge storage |
+| `contextual` | Conversation | Context within a dialogue |
+| `procedural` | System | How-to knowledge and procedures |
+| `user` | User-specific | Personal preferences and data |
+| `system` | Global | System-wide configuration |
+| `project` | Project | Project-specific knowledge |
+| `error` | Diagnostic | Error history and resolutions |
+| `workflow` | Process | Workflow execution state |
+| `skill` | Capability | Learned skills and abilities |
+| `episodic` | Temporal | Time-based event memory |
+
+### 5. 🔄 Workflows
+
+Visual workflow engine with drag-and-drop editing:
+
+- **7 Node Types**: Trigger, Condition, Action, Transform, Loop, Parallel, Delay
+- Visual canvas for building automation pipelines
+- Workflow execution with state tracking
+- Error handling and retry logic
+
+### 6. 📊 Monitoring
+
+Real-time system observability:
+
+- System metrics (CPU, memory, disk, network)
+- Service health checks
+- Performance dashboards
+- Alert notifications
+
+### 7. 🔌 Plugins
+
+Extensible plugin system with **12 pre-configured plugins**:
+
+- Plugin marketplace interface
+- Install, configure, enable/disable plugins
+- Custom plugin development support
+
+### 8. 🧮 AI Models
+
+Multi-provider model management:
+
+- Unified provider configuration UI
+- API key management per provider
+- Model selection per conversation/task
+- Provider health monitoring
+
+### 9. 💻 Terminal
+
+In-browser command terminal:
+
+- Full shell access from the UI
+- Command history and autocomplete
+- Output formatting and streaming
+
+### 10. 🔒 Security
+
+Comprehensive security framework with **5 autonomy levels**:
+
+| Level | Name | Description |
+|---|---|---|
+| 0 | **Fully Restricted** | All actions require explicit approval |
+| 1 | **Supervised** | High-impact actions require approval |
+| 2 | **Guided** | System suggests actions, user confirms |
+| 3 | **Assisted** | System acts autonomously, reports actions |
+| 4 | **Fully Autonomous** | System acts independently without confirmation |
+
+Additional security features:
+- Granular permission matrices per action type
+- Comprehensive audit logging
+- Action review and rollback capabilities
+
+### 11. 🔗 Integrations
+
+**12 integration types** for connecting with external services:
+
+| Integration | Type | Description |
+|---|---|---|
+| Gmail | Communication | Send and read emails |
+| Calendar | Scheduling | Manage events and reminders |
+| GitHub | Development | Repos, issues, pull requests |
+| Slack | Communication | Channels, messages, notifications |
+| Notion | Productivity | Pages, databases, wikis |
+| Jira | Project Management | Issues, boards, sprints |
+| Trello | Project Management | Boards, lists, cards |
+| Discord | Communication | Servers, channels, messages |
+| Linear | Project Management | Issues, projects, cycles |
+| Figma | Design | Files, components, prototypes |
+| Drive | Storage | Files, folders, sharing |
+| Sheets | Data | Spreadsheets, formulas, charts |
+| Custom MCP | Extensible | Model Context Protocol servers |
+| Webhooks | Extensible | Custom HTTP endpoint integrations |
 
 ---
 
-## API Reference
+## 📡 API Reference
+
+AIOS exposes **18 API routes** under the Next.js App Router:
 
 ### Chat & Conversations
 
-| Méthode | Endpoint | Description |
+| Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/chat` | Envoyer un message et obtenir une réponse IA |
-| `GET` | `/api/conversations` | Lister les conversations |
-| `POST` | `/api/conversations` | Créer une conversation |
-| `GET` | `/api/conversations/[id]` | Détails d'une conversation + messages |
-| `DELETE` | `/api/conversations/[id]` | Supprimer une conversation |
+| `POST` | `/api/chat` | Chat completions with model selection |
+| `GET` | `/api/conversations` | List all conversations |
+| `POST` | `/api/conversations` | Create a new conversation |
+| `GET` | `/api/conversations/[id]` | Get conversation details |
+| `PATCH` | `/api/conversations/[id]` | Update conversation |
+| `DELETE` | `/api/conversations/[id]` | Delete conversation |
 
-### Mémoire
+### Memory
 
-| Méthode | Endpoint | Description |
+| Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/memory?type=long_term` | Lister les mémoires (filtrable par type) |
-| `POST` | `/api/memory` | Créer une mémoire |
-| `DELETE` | `/api/memory?id=xxx` | Supprimer une mémoire |
+| `GET` | `/api/memory` | List memory entries (filterable) |
+| `POST` | `/api/memory` | Create a memory entry |
+| `PATCH` | `/api/memory` | Update a memory entry |
+| `DELETE` | `/api/memory` | Delete a memory entry |
 
-### Agents
+### Agents & Tasks
 
-| Méthode | Endpoint | Description |
+| Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/agents` | Lister les agents |
-| `POST` | `/api/agents` | Créer un agent |
-| `GET` | `/api/agents/[id]` | Détails d'un agent |
-| `PATCH` | `/api/agents/[id]` | Mettre à jour un agent |
-| `DELETE` | `/api/agents/[id]` | Supprimer un agent |
-
-### Tâches
-
-| Méthode | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/tasks?status=pending` | Lister les tâches (filtrable) |
-| `POST` | `/api/tasks` | Créer une tâche |
-| `GET` | `/api/tasks/[id]` | Détails d'une tâche |
-| `PATCH` | `/api/tasks/[id]` | Mettre à jour une tâche |
-| `DELETE` | `/api/tasks/[id]` | Supprimer une tâche |
+| `GET` | `/api/agents` | List all agents |
+| `POST` | `/api/agents` | Create a new agent |
+| `GET` | `/api/agents/[id]` | Get agent details |
+| `PATCH` | `/api/agents/[id]` | Update agent configuration |
+| `DELETE` | `/api/agents/[id]` | Delete an agent |
+| `GET` | `/api/tasks` | List all tasks |
+| `POST` | `/api/tasks` | Create a new task |
+| `GET` | `/api/tasks/[id]` | Get task details |
+| `PATCH` | `/api/tasks/[id]` | Update task status |
+| `DELETE` | `/api/tasks/[id]` | Delete a task |
 
 ### Workflows
 
-| Méthode | Endpoint | Description |
+| Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/workflows` | Lister les workflows |
-| `POST` | `/api/workflows` | Créer un workflow |
-| `GET` | `/api/workflows/[id]` | Détails d'un workflow |
-| `PATCH` | `/api/workflows/[id]` | Mettre à jour un workflow |
-| `DELETE` | `/api/workflows/[id]` | Supprimer un workflow |
-| `POST` | `/api/workflows/[id]/execute` | Exécuter un workflow |
+| `GET` | `/api/workflows` | List all workflows |
+| `POST` | `/api/workflows` | Create a new workflow |
+| `GET` | `/api/workflows/[id]` | Get workflow details |
+| `PATCH` | `/api/workflows/[id]` | Update workflow |
+| `DELETE` | `/api/workflows/[id]` | Delete workflow |
+| `POST` | `/api/workflows/[id]/execute` | Execute a workflow |
 
-### Plugins & Intégrations
+### Plugins & Integrations
 
-| Méthode | Endpoint | Description |
+| Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/plugins` | Lister les plugins |
-| `POST` | `/api/plugins` | Installer un plugin |
-| `PATCH` | `/api/plugins/[id]` | Configurer/activer un plugin |
-| `GET` | `/api/integrations` | Lister les intégrations |
-| `POST` | `/api/integrations` | Ajouter une intégration |
+| `GET` | `/api/plugins` | List all plugins |
+| `POST` | `/api/plugins` | Install a plugin |
+| `GET` | `/api/plugins/[id]` | Get plugin details |
+| `PATCH` | `/api/plugins/[id]` | Update plugin configuration |
+| `DELETE` | `/api/plugins/[id]` | Uninstall a plugin |
+| `GET` | `/api/integrations` | List all integrations |
+| `POST` | `/api/integrations` | Configure an integration |
 
-### IA & Monitoring
+### System
 
-| Méthode | Endpoint | Description |
+| Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/voice` | Transcrire un audio (ASR) |
-| `POST` | `/api/generate-image` | Générer une image IA |
-| `GET` | `/api/monitoring` | Métriques système |
+| `POST` | `/api/voice` | Process voice/speech data |
+| `POST` | `/api/generate-image` | Generate AI images |
+| `GET` | `/api/monitoring` | Get system metrics |
+| `GET` | `/api/models/config` | Get provider configuration |
+| `POST` | `/api/models/config` | Update provider API keys |
 
 ---
 
-## Modèle de données
+## 🤖 AI Providers
+
+AIOS uses a unified provider abstraction layer (`src/lib/providers.ts`) that supports **7 AI providers**:
+
+| Provider | Env Variable | Required | Available Models |
+|---|---|---|---|
+| **Z-AI** (Built-in) | None | No | GPT-4 Turbo, GPT-4o, Claude 3.5 Sonnet, Claude 3 Opus |
+| **Mistral AI** | `MISTRAL_API_KEY` | No | Mistral Large, Medium, Small, Nemo, Codestral |
+| **OpenAI** | `OPENAI_API_KEY` | No | GPT-4 Turbo, GPT-4o, GPT-4o Mini |
+| **Anthropic** | `ANTHROPIC_API_KEY` | No | Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku |
+| **Google** | `GOOGLE_API_KEY` | No | Gemini Pro, Gemini 1.5 Flash |
+| **DeepSeek** | `DEEPSEEK_API_KEY` | No | DeepSeek V3, DeepSeek Coder, DeepSeek Reasoner |
+| **Ollama** (Local) | `OLLAMA_BASE_URL` | No | Llama 3.1, CodeLlama, Mistral 7B |
+
+### Model Selection Strategy
 
 ```
-User ───< Conversation ───< Message
-  │                            │
-  ├──< Memory ─────────────────┘
-  ├──< Task ──── Agent (assignee)
-  ├──< Workflow ───< WorkflowExecution
-  │         └──< Task
-  ├──< Integration
-  └──< Plugin
+┌─────────────────────────────────────────────────────────────┐
+│                    Choosing a Model                          │
+├──────────────┬──────────────────────────────────────────────┤
+│ Use Case     │ Recommended Provider & Model                  │
+├──────────────┼──────────────────────────────────────────────┤
+│ Quick Start  │ Z-AI (built-in, no key required)             │
+│ Coding       │ DeepSeek Coder / Codestral / GPT-4o          │
+│ Reasoning    │ Claude 3.5 Sonnet / DeepSeek Reasoner        │
+│ Fast/ Cheap  │ GPT-4o Mini / Mistral Small / Gemini Flash   │
+│ Local/ Private│ Ollama (Llama 3.1, Mistral 7B)              │
+│ Long Context │ Gemini 1.5 Flash / Claude 3.5 Sonnet        │
+└──────────────┴──────────────────────────────────────────────┘
 ```
 
-### 10 modèles Prisma
-
-| Modèle | Description | Champs clés |
-|---|---|---|
-| `User` | Utilisateur | email, name, preferences |
-| `Conversation` | Conversation IA | title, model, systemPrompt, isArchived |
-| `Message` | Message de chat | role, content, tokenCount, contentType |
-| `Memory` | Mémoire persistante | type (10 types), importance, accessCount |
-| `Agent` | Agent spécialisé | type (16 types), capabilities, isActive |
-| `Task` | Tâche autonome | status, priority, progress, dueDate |
-| `Workflow` | Workflow visuel | nodes (JSON), edges (JSON), status |
-| `WorkflowExecution` | Exécution de workflow | input/output, nodeStates, duration |
-| `Plugin` | Plugin/Skill | slug, isEnabled, rating, downloads |
-| `Integration` | Service externe | type (12 types), status, credentials |
-
 ---
 
-## Services
+## 🗄 Database Schema
 
-### Service WebSocket (port 3003)
+AIOS uses **Prisma ORM** with **SQLite** for persistent storage. The schema defines **10 models**:
 
-Le mini-service `aios-ws` gère la communication temps réel :
+```
+┌─────────────┐     ┌────────────────┐     ┌───────────┐
+│    User      │────<│  Conversation  │────<│  Message   │
+└─────────────┘     └────────────────┘     └───────────┘
 
-| Événement | Direction | Description |
-|---|---|---|
-| `connection` / `disconnect` | Client ↔ Serveur | Cycle de vie connexion |
-| `agent:status` | Serveur → Tous | Mise à jour statut agent |
-| `agent:message` | Agent ↔ Agent | Communication inter-agents |
-| `task:update` | Serveur → Tous | Changement de statut tâche |
-| `workflow:progress` | Serveur → Tous | Progression workflow |
-| `memory:update` | Serveur → Tous | Notification mémoire |
-| `system:metrics` | Serveur → Tous | Métriques système (toutes les 30s) |
-| `chat:stream` | Serveur → Client | Streaming tokens IA |
-| `chat:typing` | Client ↔ Serveur | Indicateur de frappe |
-| `notification` | Serveur → Tous | Notifications système |
-| `health:check` | Client → Serveur | Vérification de santé |
+┌─────────────┐     ┌────────────────┐     ┌───────────────────────┐
+│   Memory     │     │     Agent      │────<│        Task            │
+└─────────────┘     └────────────────┘     └───────────────────────┘
 
----
+┌─────────────┐     ┌──────────────────────────┐
+│  Workflow    │────<│  WorkflowExecution        │
+└─────────────┘     └──────────────────────────┘
 
-## Raccourcis clavier
+┌─────────────┐     ┌─────────────┐
+│   Plugin     │     │ Integration │
+└─────────────┘     └─────────────┘
+```
 
-| Raccourci | Action |
-|---|---|
-| `1` - `9` | Naviguer vers le module correspondant |
-| `0` | Naviguer vers le module Security |
-| `⌘K` / `Ctrl+K` | Ouvrir la palette de commandes |
-| `Escape` | Fermer les modales / palette |
-| `Enter` | Envoyer un message (chat) |
-| `↑` / `↓` | Historique des commandes (terminal) |
-| `Tab` | Autocomplete (terminal) |
-
----
-
-## Sécurité
-
-### Niveaux d'autonomie
-
-| Niveau | Description | Actions automatiques |
-|---|---|---|
-| 🔴 Manuel | L'utilisateur doit confirmer chaque action | Aucune |
-| 🟡 Assisté | L'IA suggère, l'utilisateur confirme | Aucune |
-| 🟢 Semi-autonome | Actions courantes automatiques | Tâches simples |
-| 🔵 Supervisé | Actions automatiques avec supervision | La plupart, validation pour critiques |
-| ⚪ Pleinement autonome | Toutes actions automatiques | Toutes (sauf destructives) |
-
-### Bonnes pratiques
-
-1. **Ne jamais stocker de secrets en clair** — les credentials d'intégration sont référencés, pas stockés
-2. **Toujours valider les actions critiques** — le mode Supervised est recommandé
-3. **Mettre à jour régulièrement** — `bun install` pour les mises à jour de sécurité
-4. **Sauvegarder la base** — copier `db/custom.db` régulièrement
-5. **Limiter les permissions** — utiliser le niveau d'autonomie le plus bas nécessaire
-
----
-
-## Dépannage
-
-| Problème | Solution |
-|---|---|
-| Page blanche | Vérifier que `bun run dev` tourne sur le port 3000 |
-| WebSocket déconnecté | Vérifier que le service WS tourne : `lsof -i :3003` |
-| Erreur Prisma | Lancer `bun run db:push` puis `bun run db:generate` |
-| Erreur 500 /api/chat | Vérifier la clé API z-ai-web-dev-sdk |
-| Port déjà utilisé | `lsof -i :3000` ou `:3003` pour identifier le processus |
-| Lint en erreur | `bun run lint` pour voir les erreurs, `bun run lint --fix` pour corriger |
-| Base de données corrompue | Supprimer `db/custom.db` et relancer `bun run db:push` |
-
-### Vérification de santé
+### Database Commands
 
 ```bash
-# Vérifier que l'app répond
-curl -s http://localhost:3000/api/monitoring | head -1
+# Generate Prisma client
+bunx prisma generate
 
-# Vérifier le service WebSocket
-curl -s http://localhost:3004/health
+# Push schema changes (development)
+bunx prisma db push
 
-# Vérifier les processus
-ps aux | grep -E "next|bun|socket"
+# Open Prisma Studio (database GUI)
+bunx prisma studio
+
+# Create a migration (production)
+bunx prisma migrate dev --name your_migration_name
 ```
 
 ---
 
-## Roadmap
+## 🔌 WebSocket Service
 
-### Phase 1 ✅ (Actuel)
-- [x] Chat IA avec LLM
-- [x] Mémoire persistante (10 types)
-- [x] Reconnaissance vocale (ASR)
-- [x] Interface futuriste
-- [x] Multi-agents (14 types)
-- [x] Workflows visuels
-- [x] Monitoring temps réel
-- [x] Terminal intégré
-- [x] Sécurité et permissions
+The WebSocket server enables real-time communication and is located in `ws-server.js`.
 
-### Phase 2 (Prochain)
-- [ ] Streaming des réponses IA (tokens en temps réel)
-- [ ] Synthèse vocale (TTS)
-- [ ] Mode offline avec Ollama
-- [ ] Système de plugins dynamiques (chargement à chaud)
-- [ ] OAuth2 pour les intégrations
-- [ ] Base vectorielle (Qdrant/ChromaDB)
+| Property | Value |
+|---|---|
+| **Port** | 3003 |
+| **Protocol** | Socket.io |
+| **Entry Point** | `ws-server.js` |
 
-### Phase 3 (Futur)
-- [ ] Automatisation OS (Playwright, PyAutoGUI)
-- [ ] Vision IA (analyse d'images et documents)
-- [ ] Raisonnement avancé (Chain of Thought, Tree of Thoughts)
-- [ ] Orchestration intelligente des modèles
-- [ ] Docker Compose pour le déploiement
+### Events
 
-### Phase 4 (Vision)
-- [ ] Auto-amélioration continue
-- [ ] Agents persistants autonomes
-- [ ] Apprentissage contextuel avancé
-- [ ] AI Operating System complet
+| Event | Direction | Description |
+|---|---|---|
+| `system:metrics` | Server → Client | Real-time system metrics (CPU, memory, etc.) |
+| `notification` | Server → Client | System notifications and alerts |
+| `agent:status` | Server → Client | Agent status updates (idle, running, error) |
+
+### Starting the WebSocket Server
+
+```bash
+# Development (separate terminal)
+node ws-server.js
+
+# Production (with process manager)
+pm2 start ws-server.js --name aios-ws
+```
 
 ---
 
-## Licence
+## 📁 Project Structure
 
-MIT — Libre d'utilisation, modification et distribution.
+```
+my-project/
+├── prisma/
+│   └── schema.prisma            # Database schema (10 models)
+├── src/
+│   ├── app/
+│   │   ├── page.tsx             # Main dashboard page
+│   │   ├── layout.tsx           # Root layout with providers
+│   │   ├── globals.css          # Global styles
+│   │   └── api/                 # 18 API route handlers
+│   │       ├── chat/route.ts
+│   │       ├── conversations/
+│   │       │   ├── route.ts
+│   │       │   └── [id]/route.ts
+│   │       ├── memory/route.ts
+│   │       ├── agents/
+│   │       │   ├── route.ts
+│   │       │   └── [id]/route.ts
+│   │       ├── tasks/
+│   │       │   ├── route.ts
+│   │       │   └── [id]/route.ts
+│   │       ├── workflows/
+│   │       │   ├── route.ts
+│   │       │   └── [id]/
+│   │       │       ├── route.ts
+│   │       │       └── execute/route.ts
+│   │       ├── plugins/
+│   │       │   ├── route.ts
+│   │       │   └── [id]/route.ts
+│   │       ├── integrations/route.ts
+│   │       ├── voice/route.ts
+│   │       ├── generate-image/route.ts
+│   │       ├── monitoring/route.ts
+│   │       └── models/config/route.ts
+│   ├── components/
+│   │   ├── modules/             # 11 module UI components
+│   │   │   ├── AIChat.tsx
+│   │   │   ├── Voice.tsx
+│   │   │   ├── Agents.tsx
+│   │   │   ├── Memory.tsx
+│   │   │   ├── Workflows.tsx
+│   │   │   ├── Monitoring.tsx
+│   │   │   ├── Plugins.tsx
+│   │   │   ├── AIModels.tsx
+│   │   │   ├── Terminal.tsx
+│   │   │   ├── Security.tsx
+│   │   │   └── Integrations.tsx
+│   │   └── ui/                  # shadcn/ui components (New York)
+│   └── lib/
+│       ├── db.ts                # Prisma client singleton
+│       ├── auth.ts              # Authentication helpers
+│       ├── store.ts             # Zustand global store
+│       └── providers.ts         # AI provider abstraction layer
+├── ws-server.js                 # Socket.io WebSocket service
+├── .env                         # Environment variables (not committed)
+├── .env.example                 # Environment variable template
+├── install.sh                   # Automated installation script
+├── requirements.txt             # Python dependencies (for plugins)
+├── package.json                 # Node.js dependencies
+├── tsconfig.json                # TypeScript configuration
+├── tailwind.config.ts           # Tailwind CSS configuration
+├── next.config.ts               # Next.js configuration
+├── components.json              # shadcn/ui configuration
+└── README.md                    # This file
+```
+
+---
+
+## 💡 Best Practices
+
+### 🔐 API Key Security
+
+- **Never** commit your `.env` file — it is already in `.gitignore`
+- Use `.env.example` as a template and share it with your team
+- Rotate API keys regularly, especially after accidental exposure
+- In production, use a secrets manager (e.g., Docker Secrets, AWS Secrets Manager, Vault)
+- Set the minimum required permissions for each API key
+
+### 🧠 Model Selection
+
+- **Start with Z-AI** — it requires no API key and covers most use cases
+- **Match the model to the task** — use code models for coding, reasoning models for analysis
+- **Use local models (Ollama)** for sensitive data that must not leave your machine
+- **Monitor costs** — cheaper models (GPT-4o Mini, Mistral Small) are sufficient for most tasks
+- **Test before deploying** — validate model outputs in the AI Models module before production use
+
+### 🧠 Memory Management
+
+- **Tag memories** with the correct type for efficient retrieval
+- **Prune short-term memory** regularly to avoid stale context
+- **Use procedural memory** for reusable instructions and workflows
+- **Leverage project memory** for project-specific knowledge that persists across sessions
+- **Review error memory** periodically to identify recurring issues
+
+### 🔒 Security & Autonomy Levels
+
+Choose the appropriate autonomy level for your use case:
+
+```
+Level 0 (Fully Restricted) ──▶ Testing, demos, sensitive environments
+Level 1 (Supervised)        ──▶ Production with critical operations
+Level 2 (Guided)            ──▶ Day-to-day development work
+Level 3 (Assisted)          ──▶ Trusted environments, experienced users
+Level 4 (Fully Autonomous)  ──▶ Controlled environments only, with monitoring
+```
+
+- **Start at Level 0** and increase only as you build trust
+- **Audit logs** are your safety net — review them regularly
+- **Permission matrices** allow fine-grained control beyond the 5 levels
+- Never use Level 4 in production without robust monitoring in place
+
+### 🚀 Performance
+
+- **Enable WebSocket** for real-time features — polling is a fallback only
+- **Use SQLite** for development; consider PostgreSQL for production with Prisma
+- **Monitor agent resource usage** via the Monitoring module
+- **Cache frequently accessed memories** in short-term storage
+
+---
+
+## 🚢 Deployment
+
+### Production Build
+
+```bash
+# Build the Next.js application
+bun run build
+
+# Start the production server
+bun start
+
+# Start the WebSocket service (use a process manager)
+pm2 start ws-server.js --name aios-ws
+```
+
+### Docker (Recommended)
+
+```dockerfile
+# Dockerfile example
+FROM oven/bun:1
+
+WORKDIR /app
+COPY package.json bun.lockb ./
+RUN bun install --frozen-lockfile
+
+COPY . .
+RUN bunx prisma generate
+RUN bun run build
+
+EXPOSE 3000 3003
+
+CMD ["sh", "-c", "node ws-server.js & bun start"]
+```
+
+```bash
+# Build and run
+docker build -t aios .
+docker run -p 3000:3000 -p 3003:3003 --env-file .env aios
+```
+
+### Process Manager (PM2)
+
+```bash
+# Install PM2 globally
+npm install -g pm2
+
+# Start the Next.js app
+pm2 start "bun start" --name aios-app
+
+# Start the WebSocket server
+pm2 start ws-server.js --name aios-ws
+
+# Save and enable auto-restart
+pm2 save
+pm2 startup
+```
+
+### Environment Checklist
+
+Before going to production, ensure:
+
+- [ ] All API keys are set via environment variables (not hardcoded)
+- [ ] `DATABASE_URL` points to a persistent database
+- [ ] WebSocket service is running and accessible
+- [ ] Security autonomy level is appropriately configured
+- [ ] Audit logging is enabled
+- [ ] CORS and security headers are configured
+- [ ] SSL/TLS is enabled (via reverse proxy or Next.js config)
+- [ ] Regular database backups are scheduled
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
+3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
+4. **Push** to the branch (`git push origin feature/amazing-feature`)
+5. **Open** a Pull Request
+
+### Development Guidelines
+
+- Follow the existing TypeScript and React patterns
+- Use shadcn/ui components for all UI elements
+- Maintain the modular architecture — new features go in `src/components/modules/`
+- Add API routes under `src/app/api/` following the existing patterns
+- Update the Prisma schema for new data models and run `bunx prisma db push`
+- Test with multiple AI providers before submitting
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+---
+
+<div align="center">
+
+**Built with ❤️ by the AIOS Team**
+
+Inspired by Jarvis and OpenClaw • Powered by Next.js, React, and TypeScript
+
+[⬆ Back to Top](#-aios--ai-operating-system)
+
+</div>

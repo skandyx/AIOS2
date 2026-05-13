@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getDefaultUserId } from '@/lib/auth'
+import { chatCompletion, resolveProvider, type ChatMessage } from '@/lib/providers'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { message, conversationId, systemPrompt } = body
+    const { message, conversationId, systemPrompt, model } = body
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json(
@@ -37,6 +38,7 @@ export async function POST(request: NextRequest) {
           title: message.slice(0, 60) + (message.length > 60 ? '...' : ''),
           systemPrompt: systemPrompt || 'You are a helpful AI assistant.',
           userId,
+          model: model || null,
         },
         include: { messages: { orderBy: { createdAt: 'asc' } } },
       })
@@ -54,25 +56,28 @@ export async function POST(request: NextRequest) {
     // Build messages array for LLM
     const systemContent =
       conversation.systemPrompt || 'You are a helpful AI assistant.'
-    const llmMessages = [
-      { role: 'assistant' as const, content: systemContent },
+    const llmMessages: ChatMessage[] = [
+      { role: 'system', content: systemContent },
       ...conversation.messages.map((m) => ({
-        role: m.role as 'user' | 'assistant' | 'system',
+        role: m.role as 'system' | 'user' | 'assistant',
         content: m.content,
       })),
-      { role: 'user' as const, content: message },
+      { role: 'user', content: message },
     ]
 
-    // Call LLM via z-ai-web-dev-sdk
-    const ZAI = (await import('z-ai-web-dev-sdk')).default
-    const zai = await ZAI.create()
+    // Determine which model/provider to use
+    const selectedModel = model || conversation.model || undefined
+    const providerId = selectedModel ? resolveProvider(selectedModel) : 'zai'
 
-    const completion = await zai.chat.completions.create({
+    // Call LLM via the provider abstraction
+    const completion = await chatCompletion({
       messages: llmMessages,
-      thinking: { type: 'disabled' },
+      model: selectedModel,
+      temperature: 0.7,
+      maxTokens: 4096,
     })
 
-    const aiResponse = completion.choices[0]?.message?.content || ''
+    const aiResponse = completion.content
 
     // Save AI response
     const assistantMessage = await db.message.create({
@@ -80,6 +85,7 @@ export async function POST(request: NextRequest) {
         role: 'assistant',
         content: aiResponse,
         conversationId: conversation.id,
+        model: completion.model,
       },
     })
 
@@ -87,6 +93,9 @@ export async function POST(request: NextRequest) {
       conversationId: conversation.id,
       message: userMessage,
       response: assistantMessage,
+      provider: providerId,
+      model: completion.model,
+      usage: completion.usage,
     })
   } catch (error) {
     console.error('Chat error:', error)

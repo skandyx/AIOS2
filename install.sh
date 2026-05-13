@@ -1,422 +1,268 @@
-#!/usr/bin/env bash
-# ═══════════════════════════════════════════════════════════════════════════
-# AIOS — AI Operating System — Installation Script
-# Compatible: Debian 11+ / Ubuntu 20.04+
-# Usage: sudo ./install.sh [OPTIONS]
-# ═══════════════════════════════════════════════════════════════════════════
+#!/bin/bash
+# ============================================================
+#  AIOS - AI Operating System :: Installation Script
+#  Target: Debian 11+ / Ubuntu 20.04+
+#  Runtime: Bun
+# ============================================================
 
-set -euo pipefail
+set -e
 
-# ─── Colors ───────────────────────────────────────────────────────────────
+# ----- Colors & Helpers ----- #
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# ─── Variables ────────────────────────────────────────────────────────────
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NODE_MAJOR=20
-BUN_INSTALL_DIR="$HOME/.bun"
-LOG_FILE="/tmp/aios-install.log"
-MODE="dev"  # dev or prod
+info()    { echo -e "${BLUE}[INFO]${NC}  $*"; }
+success() { echo -e "${GREEN}[OK]${NC}    $*"; }
+warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
+error()   { echo -e "${RED}[ERROR]${NC} $*"; }
+header()  { echo -e "\n${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"; echo -e "${CYAN}${BOLD}  $*${NC}"; echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"; }
 
-# ─── Parse Arguments ─────────────────────────────────────────────────────
-SKIP_SYSTEM=false
-SKIP_BUN=false
-SKIP_NODE=false
-SKIP_NPM_INSTALL=false
-SKIP_DB=false
-START_SERVICES=true
+# ----- Project Configuration ----- #
+PROJECT_DIR="/home/z/my-project"
+REPO_URL=""  # Set this to your git repo URL, e.g. "https://github.com/your-org/aios.git"
+DEV_PORT=3000
+WS_PORT=3003
+DB_DIR="${PROJECT_DIR}/db"
 
-while [[ $# -gt 0 ]]; do
-  case $1 in
-    --skip-system)   SKIP_SYSTEM=true; shift ;;
-    --skip-bun)      SKIP_BUN=true; shift ;;
-    --skip-node)     SKIP_NODE=true; shift ;;
-    --skip-install)  SKIP_NPM_INSTALL=true; shift ;;
-    --skip-db)       SKIP_DB=true; shift ;;
-    --no-start)      START_SERVICES=false; shift ;;
-    --dev)           MODE="dev"; shift ;;
-    --prod)          MODE="prod"; shift ;;
-    --help|-h)       echo "Usage: sudo ./install.sh [OPTIONS]"; echo ""; echo "Options:"; echo "  --skip-system   Skip system package installation"; echo "  --skip-bun      Skip Bun installation"; echo "  --skip-node     Skip Node.js installation"; echo "  --skip-install  Skip npm dependency installation"; echo "  --skip-db       Skip database initialization"; echo "  --no-start      Do not start services after install"; echo "  --dev           Development mode (default)"; echo "  --prod          Production mode (build + start)"; echo "  --help          Show this help message"; exit 0 ;;
-    *) echo -e "${RED}Unknown option: $1${NC}"; exit 1 ;;
-  esac
+# ============================================================
+#  Step 1: OS Check
+# ============================================================
+header "Step 1 / 8 — Checking Operating System"
+
+if [[ ! -f /etc/os-release ]]; then
+    error "Cannot determine OS — /etc/os-release not found."
+    exit 1
+fi
+
+source /etc/os-release
+
+case "$ID" in
+    debian)
+        if [[ "$(echo "$VERSION_ID" | awk -F. '{print $1}')" -lt 11 ]]; then
+            error "Debian $VERSION_ID is not supported. Minimum: Debian 11."
+            exit 1
+        fi
+        success "Debian $VERSION_ID detected — supported."
+        ;;
+    ubuntu)
+        if [[ "$(echo "$VERSION_ID" | awk -F. '{print $1}')" -lt 20 ]]; then
+            error "Ubuntu $VERSION_ID is not supported. Minimum: Ubuntu 20.04."
+            exit 1
+        fi
+        success "Ubuntu $VERSION_ID detected — supported."
+        ;;
+    *)
+        error "Unsupported OS: $ID. This script targets Debian 11+ or Ubuntu 20.04+."
+        exit 1
+        ;;
+esac
+
+# ============================================================
+#  Step 2: Install System Dependencies
+# ============================================================
+header "Step 2 / 8 — Installing System Dependencies"
+
+SYS_DEPS=(curl git build-essential python3 python3-pip pkg-config libssl-dev)
+
+MISSING=()
+for dep in "${SYS_DEPS[@]}"; do
+    if ! dpkg -s "$dep" &>/dev/null; then
+        MISSING+=("$dep")
+    fi
 done
 
-# ─── Helper Functions ────────────────────────────────────────────────────
-log()  { echo -e "${CYAN}[AIOS]${NC} $1"; }
-ok()   { echo -e "${GREEN}[✓]${NC} $1"; }
-warn() { echo -e "${YELLOW}[!]${NC} $1"; }
-err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
+if [[ ${#MISSING[@]} -gt 0 ]]; then
+    info "Installing missing packages: ${MISSING[*]}"
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq "${MISSING[@]}"
+    success "System dependencies installed."
+else
+    success "All system dependencies already satisfied."
+fi
 
-command_exists() {
-  command -v "$1" &>/dev/null
-}
+# ============================================================
+#  Step 3: Install Bun
+# ============================================================
+header "Step 3 / 8 — Installing Bun Runtime"
 
-check_root() {
-  if [[ $EUID -eq 0 ]]; then
-    warn "Running as root — npm global installs may use root home."
-  fi
-}
+if command -v bun &>/dev/null; then
+    BUN_VERSION=$(bun --version 2>/dev/null || echo "unknown")
+    success "Bun is already installed (v${BUN_VERSION})."
+else
+    info "Installing Bun..."
+    curl -fsSL https://bun.sh/install | bash
 
-# ─── Pre-flight Checks ───────────────────────────────────────────────────
-preflight() {
-  log "Running pre-flight checks..."
+    # Source Bun so it's available in this shell
+    export BUN_INSTALL="$HOME/.bun"
+    export PATH="$BUN_INSTALL/bin:$PATH"
 
-  # Check OS
-  if [[ ! -f /etc/os-release ]]; then
-    err "Cannot detect OS. This script requires Debian or Ubuntu."
-  fi
-  source /etc/os-release
-  if [[ "$ID" != "debian" && "$ID" != "ubuntu" ]]; then
-    err "Unsupported OS: $ID. This script requires Debian or Ubuntu."
-  fi
-  ok "OS: $PRETTY_NAME"
-
-  # Check architecture
-  ARCH=$(uname -m)
-  if [[ "$ARCH" != "x86_64" && "$ARCH" != "aarch64" && "$ARCH" != "arm64" ]]; then
-    err "Unsupported architecture: $ARCH. Only x86_64 and aarch64/arm64 are supported."
-  fi
-  ok "Architecture: $ARCH"
-
-  # Check RAM (minimum 2GB)
-  TOTAL_RAM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-  TOTAL_RAM_GB=$((TOTAL_RAM_KB / 1024 / 1024))
-  if [[ $TOTAL_RAM_GB -lt 1 ]]; then
-    err "Insufficient RAM: ${TOTAL_RAM_GB}GB. Minimum 2GB recommended."
-  fi
-  ok "RAM: ${TOTAL_RAM_GB}GB"
-
-  # Check disk space (minimum 1GB free)
-  AVAILABLE_DISK_KB=$(df "$PROJECT_DIR" | awk 'NR==2 {print $4}')
-  AVAILABLE_DISK_GB=$((AVAILABLE_DISK_KB / 1024 / 1024))
-  if [[ $AVAILABLE_DISK_GB -lt 1 ]]; then
-    err "Insufficient disk space: ${AVAILABLE_DISK_GB}GB. Minimum 1GB required."
-  fi
-  ok "Disk: ${AVAILABLE_DISK_GB}GB available"
-}
-
-# ─── Install System Dependencies ─────────────────────────────────────────
-install_system_deps() {
-  log "Installing system dependencies..."
-
-  apt-get update -qq
-
-  apt-get install -y -qq \
-    curl \
-    unzip \
-    git \
-    build-essential \
-    python3 \
-    ca-certificates \
-    gnupg \
-    lsof \
-    procps \
-  2>&1 | tee -a "$LOG_FILE" > /dev/null
-
-  ok "System dependencies installed"
-}
-
-# ─── Install Bun ──────────────────────────────────────────────────────────
-install_bun() {
-  if command_exists bun; then
-    ok "Bun already installed: $(bun --version)"
-    return
-  fi
-
-  log "Installing Bun runtime..."
-
-  # Detect arch for Bun install
-  BUN_ARCH=""
-  case $(uname -m) in
-    x86_64)  BUN_ARCH="x64" ;;
-    aarch64|arm64) BUN_ARCH="arm64" ;;
-    *)       err "Unsupported arch for Bun: $(uname -m)" ;;
-  esac
-
-  curl -fsSL https://bun.sh/install | bash 2>&1 | tee -a "$LOG_FILE"
-
-  # Source bun in current shell
-  export BUN_INSTALL="$HOME/.bun"
-  export PATH="$BUN_INSTALL/bin:$PATH"
-
-  if [[ -f "$HOME/.bashrc" ]]; then
-    source "$HOME/.bashrc" 2>/dev/null || true
-  fi
-
-  # Verify
-  if command_exists bun; then
-    ok "Bun installed: $(bun --version)"
-  else
-    # Try with full path
-    if [[ -x "$HOME/.bun/bin/bun" ]]; then
-      export PATH="$HOME/.bun/bin:$PATH"
-      ok "Bun installed: $(bun --version)"
+    if command -v bun &>/dev/null; then
+        success "Bun installed successfully ($(bun --version))."
     else
-      err "Bun installation failed. Install manually: curl -fsSL https://bun.sh/install | bash"
+        error "Bun installation failed. Please install manually: curl -fsSL https://bun.sh/install | bash"
+        exit 1
     fi
-  fi
-}
+fi
 
-# ─── Install Node.js ─────────────────────────────────────────────────────
-install_node() {
-  if command_exists node; then
-    NODE_VERSION=$(node --version)
-    ok "Node.js already installed: $NODE_VERSION"
-    return
-  fi
+# Ensure Bun is on PATH for subsequent commands
+export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
+export PATH="$BUN_INSTALL/bin:$PATH"
 
-  log "Installing Node.js $NODE_MAJOR.x..."
+# ============================================================
+#  Step 4: Clone or Detect Project
+# ============================================================
+header "Step 4 / 8 — Setting Up Project Directory"
 
-  # Add NodeSource repository
-  curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - 2>&1 | tee -a "$LOG_FILE" > /dev/null
+if [[ -d "${PROJECT_DIR}" && -f "${PROJECT_DIR}/package.json" ]]; then
+    success "Existing project detected at ${PROJECT_DIR}."
+    cd "${PROJECT_DIR}"
+    info "Pulling latest changes (if this is a git repo)..."
+    if git rev-parse --is-inside-work-tree &>/dev/null; then
+        git pull --ff-only 2>/dev/null && success "Repository updated." || warn "Could not pull latest changes (maybe local modifications?)."
+    else
+        warn "Not a git repository — skipping pull."
+    fi
+elif [[ -n "$REPO_URL" ]]; then
+    info "Cloning repository from ${REPO_URL}..."
+    git clone "$REPO_URL" "${PROJECT_DIR}"
+    cd "${PROJECT_DIR}"
+    success "Repository cloned."
+else
+    warn "No existing project and REPO_URL is not set."
+    error "Please either:"
+    error "  1. Clone the repo manually, or"
+    error "  2. Set REPO_URL at the top of this script."
+    exit 1
+fi
 
-  apt-get install -y -qq nodejs 2>&1 | tee -a "$LOG_FILE" > /dev/null
+# ============================================================
+#  Step 5: Install Project Dependencies
+# ============================================================
+header "Step 5 / 8 — Installing Project Dependencies"
 
-  if command_exists node; then
-    ok "Node.js installed: $(node --version)"
-    ok "npm installed: $(npm --version)"
-  else
-    err "Node.js installation failed"
-  fi
-}
+if [[ ! -f "package.json" ]]; then
+    error "package.json not found in ${PROJECT_DIR}."
+    exit 1
+fi
 
-# ─── Install Project Dependencies ────────────────────────────────────────
-install_project_deps() {
-  log "Installing project dependencies..."
+info "Running bun install..."
+bun install
 
-  cd "$PROJECT_DIR"
+success "Project dependencies installed."
 
-  # Ensure bun is in PATH
-  export PATH="$HOME/.bun/bin:$PATH"
+# ============================================================
+#  Step 6: Configure Environment
+# ============================================================
+header "Step 6 / 8 — Configuring Environment"
 
-  if ! command_exists bun; then
-    err "Bun not found in PATH. Make sure Bun is installed."
-  fi
+if [[ ! -f ".env" ]]; then
+    if [[ -f ".env.example" ]]; then
+        cp .env.example .env
+        warn ".env created from .env.example."
+        warn "Please edit .env and add your API keys before running the app:"
+        warn "  ${PROJECT_DIR}/.env"
+    else
+        info "No .env.example found — generating default .env..."
+        mkdir -p "${DB_DIR}"
+        cat > .env << 'ENVEOF'
+DATABASE_URL=file:/home/z/my-project/db/custom.db
 
-  # Main project
-  log "Installing main project dependencies..."
-  bun install 2>&1 | tee -a "$LOG_FILE"
+# AI Model Provider API Keys
+MISTRAL_API_KEY=
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+GOOGLE_API_KEY=
+DEEPSEEK_API_KEY=
+OLLAMA_BASE_URL=http://localhost:11434
+ENVEOF
+        warn ".env generated with defaults."
+        warn "Please edit .env and add your API keys:"
+        warn "  ${PROJECT_DIR}/.env"
+    fi
+else
+    success ".env already exists — leaving it untouched."
+fi
 
-  # WebSocket mini-service
-  log "Installing WebSocket service dependencies..."
-  cd "$PROJECT_DIR/mini-services/aios-ws"
-  bun install 2>&1 | tee -a "$LOG_FILE"
-  cd "$PROJECT_DIR"
+# ============================================================
+#  Step 7: Initialize Prisma Database
+# ============================================================
+header "Step 7 / 8 — Initializing Prisma Database"
 
-  ok "Project dependencies installed"
-}
+mkdir -p "${DB_DIR}"
 
-# ─── Initialize Database ─────────────────────────────────────────────────
-init_database() {
-  log "Initializing database..."
+if [[ -f "${DB_DIR}/custom.db" ]]; then
+    info "SQLite database already exists at ${DB_DIR}/custom.db."
+    info "Running db:push to sync schema..."
+else
+    info "No existing database found — running db:push to create one..."
+fi
 
-  cd "$PROJECT_DIR"
+bun run db:push
 
-  # Ensure the db directory exists
-  mkdir -p db
+success "Prisma database initialized and schema synced."
 
-  # Push Prisma schema
-  bun run db:push 2>&1 | tee -a "$LOG_FILE"
+# ============================================================
+#  Step 8: Start Services
+# ============================================================
+header "Step 8 / 8 — Starting Services"
 
-  # Generate Prisma client
-  bun run db:generate 2>&1 | tee -a "$LOG_FILE"
+# --- Start Next.js Dev Server ---
+info "Starting AIOS development server on port ${DEV_PORT}..."
+bun run dev &
+DEV_PID=$!
+success "Dev server started (PID ${DEV_PID}, http://localhost:${DEV_PORT})"
 
-  ok "Database initialized (SQLite at db/custom.db)"
-}
+# --- Start WebSocket Server ---
+WS_ENTRY="${PROJECT_DIR}/ws-server.js"
+if [[ -f "$WS_ENTRY" ]]; then
+    info "Starting WebSocket service on port ${WS_PORT}..."
+    bun run "$WS_ENTRY" &
+    WS_PID=$!
+    success "WebSocket server started (PID ${WS_PID}, ws://localhost:${WS_PORT})"
+else
+    warn "ws-server.js not found — skipping WebSocket service."
+    warn "If your project uses a different WS entry point, edit this script."
+    WS_PID=""
+fi
 
-# ─── Build for Production ────────────────────────────────────────────────
-build_production() {
-  log "Building for production..."
+# Give services a moment to bind
+sleep 3
 
-  cd "$PROJECT_DIR"
+# ============================================================
+#  Success Banner
+# ============================================================
+echo ""
+echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}${BOLD}║                                                          ║${NC}"
+echo -e "${GREEN}${BOLD}║          🚀  AIOS Installation Complete!  🚀             ║${NC}"
+echo -e "${GREEN}${BOLD}║                                                          ║${NC}"
+echo -e "${GREEN}${BOLD}╠══════════════════════════════════════════════════════════╣${NC}"
+echo -e "${GREEN}${BOLD}║                                                          ║${NC}"
+echo -e "${GREEN}${BOLD}║  🌐  App:     http://localhost:${DEV_PORT}                    ║${NC}"
+if [[ -n "$WS_PID" ]]; then
+echo -e "${GREEN}${BOLD}║  🔌  WS:      ws://localhost:${WS_PORT}                      ║${NC}"
+fi
+echo -e "${GREEN}${BOLD}║  📁  Dir:     ${PROJECT_DIR}          ${NC}"
+echo -e "${GREEN}${BOLD}║  ⚙️  Config:   ${PROJECT_DIR}/.env             ${NC}"
+echo -e "${GREEN}${BOLD}║                                                          ║${NC}"
+echo -e "${GREEN}${BOLD}╠══════════════════════════════════════════════════════════╣${NC}"
+echo -e "${GREEN}${BOLD}║                                                          ║${NC}"
+echo -e "${GREEN}${BOLD}║  Next Steps:                                              ║${NC}"
+echo -e "${GREEN}${BOLD}║    1. Edit .env with your API keys                        ║${NC}"
+echo -e "${GREEN}${BOLD}║    2. Restart services if keys were updated               ║${NC}"
+echo -e "${GREEN}${BOLD}║    3. Open http://localhost:${DEV_PORT} in your browser        ║${NC}"
+echo -e "${GREEN}${BOLD}║                                                          ║${NC}"
+echo -e "${GREEN}${BOLD}║  To stop services:                                        ║${NC}"
+echo -e "${GREEN}${BOLD}║    kill ${DEV_PID}${WS_PID:+ $WS_PID}                                  ║${NC}"
+echo -e "${GREEN}${BOLD}║                                                          ║${NC}"
+echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════╝${NC}"
+echo ""
 
-  bun run build 2>&1 | tee -a "$LOG_FILE"
-
-  ok "Production build complete"
-}
-
-# ─── Start Services ──────────────────────────────────────────────────────
-start_services() {
-  log "Starting AIOS services..."
-
-  cd "$PROJECT_DIR"
-
-  # Kill any existing processes
-  pkill -f "next dev" 2>/dev/null || true
-  pkill -f "next start" 2>/dev/null || true
-  pkill -f "aios-ws" 2>/dev/null || true
-  sleep 1
-
-  # Start WebSocket service
-  log "Starting WebSocket service on port 3003..."
-  cd "$PROJECT_DIR/mini-services/aios-ws"
-  nohup bun --hot index.ts > /tmp/aios-ws.log 2>&1 &
-  WS_PID=$!
-  cd "$PROJECT_DIR"
-
-  # Wait for WS to start
-  sleep 2
-  if kill -0 $WS_PID 2>/dev/null; then
-    ok "WebSocket service started (PID: $WS_PID, port: 3003)"
-  else
-    warn "WebSocket service may not have started. Check: /tmp/aios-ws.log"
-  fi
-
-  # Start Next.js
-  if [[ "$MODE" == "prod" ]]; then
-    log "Starting Next.js in production mode on port 3000..."
-    nohup bun run start > /tmp/aios-next.log 2>&1 &
-  else
-    log "Starting Next.js in development mode on port 3000..."
-    nohup bun run dev > /tmp/aios-next.log 2>&1 &
-  fi
-  NEXT_PID=$!
-
-  # Wait for Next.js to start
-  sleep 5
-  if kill -0 $NEXT_PID 2>/dev/null; then
-    ok "Next.js started (PID: $NEXT_PID, port: 3000)"
-  else
-    warn "Next.js may not have started. Check: /tmp/aios-next.log"
-  fi
-
-  # Save PIDs for later
-  echo "$NEXT_PID" > /tmp/aios-next.pid
-  echo "$WS_PID" > /tmp/aios-ws.pid
-}
-
-# ─── Health Check ────────────────────────────────────────────────────────
-health_check() {
-  log "Running health checks..."
-
-  # Check Next.js
-  if curl -sf -o /dev/null -m 5 http://localhost:3000 2>/dev/null; then
-    ok "Next.js: responding on port 3000"
-  else
-    warn "Next.js: not responding on port 3000 (may still be starting)"
-  fi
-
-  # Check API
-  if curl -sf -o /dev/null -m 5 http://localhost:3000/api/monitoring 2>/dev/null; then
-    ok "API: /api/monitoring responding"
-  else
-    warn "API: /api/monitoring not responding yet"
-  fi
-
-  # Check WebSocket
-  if lsof -i :3003 &>/dev/null; then
-    ok "WebSocket: listening on port 3003"
-  else
-    warn "WebSocket: not listening on port 3003"
-  fi
-}
-
-# ─── Print Summary ───────────────────────────────────────────────────────
-print_summary() {
-  echo ""
-  echo -e "${BOLD}${CYAN}═══════════════════════════════════════════════════════════${NC}"
-  echo -e "${BOLD}${CYAN}  AIOS — AI Operating System — Installation Complete!  ${NC}"
-  echo -e "${BOLD}${CYAN}═══════════════════════════════════════════════════════════${NC}"
-  echo ""
-  echo -e "  ${GREEN}➜${NC}  Application:  http://localhost:3000"
-  echo -e "  ${GREEN}➜${NC}  WebSocket:    ws://localhost:3003"
-  echo -e "  ${GREEN}➜${NC}  Mode:         ${MODE}"
-  echo -e "  ${GREEN}➜${NC}  Database:     ${PROJECT_DIR}/db/custom.db"
-  echo ""
-  echo -e "  ${CYAN}Commands:${NC}"
-  echo -e "    Start dev:       cd ${PROJECT_DIR} && bun run dev"
-  echo -e "    Start WS:        cd ${PROJECT_DIR}/mini-services/aios-ws && bun run dev"
-  echo -e "    Lint:            cd ${PROJECT_DIR} && bun run lint"
-  echo -e "    Reset DB:        cd ${PROJECT_DIR} && bun run db:reset"
-  echo ""
-  echo -e "  ${CYAN}Stop services:${NC}"
-  echo -e "    kill \$(cat /tmp/aios-next.pid) 2>/dev/null"
-  echo -e "    kill \$(cat /tmp/aios-ws.pid) 2>/dev/null"
-  echo ""
-  echo -e "  ${CYAN}Logs:${NC}"
-  echo -e "    Next.js:  /tmp/aios-next.log"
-  echo -e "    WebSocket: /tmp/aios-ws.log"
-  echo -e "    Install:  ${LOG_FILE}"
-  echo ""
-  echo -e "${BOLD}${CYAN}═══════════════════════════════════════════════════════════${NC}"
-}
-
-# ═══════════════════════════════════════════════════════════════════════════
-# MAIN
-# ═══════════════════════════════════════════════════════════════════════════
-
-main() {
-  echo ""
-  echo -e "${BOLD}${CYAN}═══════════════════════════════════════════════════════════${NC}"
-  echo -e "${BOLD}${CYAN}  AIOS — AI Operating System — Installer              ${NC}"
-  echo -e "${BOLD}${CYAN}  For Debian 11+ / Ubuntu 20.04+                       ${NC}"
-  echo -e "${BOLD}${CYAN}═══════════════════════════════════════════════════════════${NC}"
-  echo ""
-
-  # Init log
-  echo "AIOS Install Log — $(date)" > "$LOG_FILE"
-  echo "Mode: $MODE" >> "$LOG_FILE"
-  echo "OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)" >> "$LOG_FILE"
-  echo "" >> "$LOG_FILE"
-
-  # Step 1: Pre-flight
-  preflight
-
-  # Step 2: System deps
-  if [[ "$SKIP_SYSTEM" == false ]]; then
-    install_system_deps
-  else
-    warn "Skipping system package installation (--skip-system)"
-  fi
-
-  # Step 3: Bun
-  if [[ "$SKIP_BUN" == false ]]; then
-    install_bun
-  else
-    warn "Skipping Bun installation (--skip-bun)"
-  fi
-
-  # Step 4: Node.js
-  if [[ "$SKIP_NODE" == false ]]; then
-    install_node
-  else
-    warn "Skipping Node.js installation (--skip-node)"
-  fi
-
-  # Step 5: Project dependencies
-  if [[ "$SKIP_NPM_INSTALL" == false ]]; then
-    install_project_deps
-  else
-    warn "Skipping npm install (--skip-install)"
-  fi
-
-  # Step 6: Database
-  if [[ "$SKIP_DB" == false ]]; then
-    init_database
-  else
-    warn "Skipping database initialization (--skip-db)"
-  fi
-
-  # Step 7: Build (prod only)
-  if [[ "$MODE" == "prod" ]]; then
-    build_production
-  fi
-
-  # Step 8: Start services
-  if [[ "$START_SERVICES" == true ]]; then
-    start_services
-    sleep 3
-    health_check
-  else
-    warn "Not starting services (--no-start)"
-  fi
-
-  # Summary
-  print_summary
-}
-
-main "$@"
+# Keep script alive so background processes don't get SIGHUP
+info "Press Ctrl+C to stop all services and exit."
+wait

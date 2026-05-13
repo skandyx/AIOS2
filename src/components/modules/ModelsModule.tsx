@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Slider } from '@/components/ui/slider'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -39,6 +41,14 @@ import {
   Wifi,
   WifiOff,
   GripVertical,
+  Key,
+  EyeOff,
+  Eye as EyeIcon,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle2,
+  Save,
+  ExternalLink,
 } from 'lucide-react'
 
 type Provider = 'OpenAI' | 'Anthropic' | 'Mistral' | 'Google' | 'DeepSeek' | 'Local'
@@ -58,9 +68,35 @@ interface AIModel {
   isLocal: boolean
   contextWindow: string
   status: 'available' | 'loading' | 'offline'
+  providerId: string
 }
 
-const MODELS: AIModel[] = [
+interface ProviderKeyStatus {
+  configured: boolean
+  masked: string
+}
+
+interface ModelsConfig {
+  providers: Array<{
+    id: string
+    name: string
+    envKey: string
+    baseUrl?: string
+    models: Array<{
+      id: string
+      name: string
+      providerId: string
+      providerName: string
+      capabilities: string[]
+      contextWindow: string
+      maxTokens: number
+    }>
+    isAvailable: boolean
+  }>
+  keysStatus: Record<string, ProviderKeyStatus>
+}
+
+const STATIC_MODELS: AIModel[] = [
   {
     id: 'gpt4-turbo',
     name: 'GPT-4 Turbo',
@@ -76,6 +112,7 @@ const MODELS: AIModel[] = [
     isLocal: false,
     contextWindow: '128K',
     status: 'available',
+    providerId: 'zai',
   },
   {
     id: 'gpt4o',
@@ -92,6 +129,7 @@ const MODELS: AIModel[] = [
     isLocal: false,
     contextWindow: '128K',
     status: 'available',
+    providerId: 'zai',
   },
   {
     id: 'claude-3.5-sonnet',
@@ -108,6 +146,7 @@ const MODELS: AIModel[] = [
     isLocal: false,
     contextWindow: '200K',
     status: 'available',
+    providerId: 'zai',
   },
   {
     id: 'claude-3-opus',
@@ -124,6 +163,7 @@ const MODELS: AIModel[] = [
     isLocal: false,
     contextWindow: '200K',
     status: 'available',
+    providerId: 'zai',
   },
   {
     id: 'mistral-large',
@@ -138,8 +178,43 @@ const MODELS: AIModel[] = [
     costTier: 3,
     isActive: false,
     isLocal: false,
+    contextWindow: '128K',
+    status: 'available',
+    providerId: 'mistral',
+  },
+  {
+    id: 'mistral-small',
+    name: 'Mistral Small',
+    provider: 'Mistral',
+    emoji: '💧',
+    providerColor: '#06b6d4',
+    description: 'Fast and efficient Mistral model',
+    capabilities: ['chat', 'code'],
+    speedRating: 5,
+    qualityRating: 3,
+    costTier: 1,
+    isActive: false,
+    isLocal: false,
     contextWindow: '32K',
     status: 'available',
+    providerId: 'mistral',
+  },
+  {
+    id: 'codestral',
+    name: 'Codestral',
+    provider: 'Mistral',
+    emoji: '💻',
+    providerColor: '#06b6d4',
+    description: 'Mistral code generation specialist',
+    capabilities: ['code'],
+    speedRating: 4,
+    qualityRating: 4,
+    costTier: 2,
+    isActive: false,
+    isLocal: false,
+    contextWindow: '32K',
+    status: 'available',
+    providerId: 'mistral',
   },
   {
     id: 'gemini-pro',
@@ -156,6 +231,7 @@ const MODELS: AIModel[] = [
     isLocal: false,
     contextWindow: '128K',
     status: 'available',
+    providerId: 'google',
   },
   {
     id: 'deepseek-v3',
@@ -172,6 +248,7 @@ const MODELS: AIModel[] = [
     isLocal: false,
     contextWindow: '64K',
     status: 'available',
+    providerId: 'deepseek',
   },
   {
     id: 'llama-3.1',
@@ -188,12 +265,13 @@ const MODELS: AIModel[] = [
     isLocal: true,
     contextWindow: '128K',
     status: 'offline',
+    providerId: 'ollama',
   },
   {
     id: 'codellama',
     name: 'CodeLlama',
     provider: 'Local',
-    emoji: '💻',
+    emoji: '🖥️',
     providerColor: '#64748b',
     description: 'Code generation specialist (local)',
     capabilities: ['code'],
@@ -204,10 +282,19 @@ const MODELS: AIModel[] = [
     isLocal: true,
     contextWindow: '16K',
     status: 'offline',
+    providerId: 'ollama',
   },
 ]
 
 const PROVIDERS: Provider[] = ['OpenAI', 'Anthropic', 'Mistral', 'Google', 'DeepSeek', 'Local']
+
+const PROVIDER_LINKS: Record<string, string> = {
+  MISTRAL_API_KEY: 'https://console.mistral.ai/',
+  OPENAI_API_KEY: 'https://platform.openai.com/api-keys',
+  ANTHROPIC_API_KEY: 'https://console.anthropic.com/',
+  GOOGLE_API_KEY: 'https://aistudio.google.com/apikey',
+  DEEPSEEK_API_KEY: 'https://platform.deepseek.com/',
+}
 
 const TASK_MODELS: Record<string, string> = {
   chat: 'gpt4o',
@@ -233,7 +320,7 @@ function RatingBar({ value, max = 5, color }: { value: number; max?: number; col
 }
 
 export default function ModelsModule() {
-  const [models, setModels] = useState<AIModel[]>(MODELS)
+  const [models, setModels] = useState<AIModel[]>(STATIC_MODELS)
   const [providerFilter, setProviderFilter] = useState<Provider | 'all'>('all')
   const [compareMode, setCompareMode] = useState(false)
   const [compareIds, setCompareIds] = useState<string[]>([])
@@ -243,6 +330,52 @@ export default function ModelsModule() {
   const [maxTokens, setMaxTokens] = useState([4096])
   const [fallbackChain, setFallbackChain] = useState<string[]>(['gpt4-turbo', 'claude-3.5-sonnet', 'gpt4o'])
   const [taskModelOverrides, setTaskModelOverrides] = useState<Record<string, string>>(TASK_MODELS)
+
+  // API Key management state
+  const [keysStatus, setKeysStatus] = useState<Record<string, ProviderKeyStatus>>({})
+  const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false)
+  const [selectedProvider, setSelectedProvider] = useState<string>('mistral')
+  const [apiKeyInput, setApiKeyInput] = useState('')
+  const [showApiKey, setShowApiKey] = useState(false)
+  const [isValidating, setIsValidating] = useState(false)
+  const [validationResult, setValidationResult] = useState<{ valid: boolean; message: string } | null>(null)
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false)
+
+  // Fetch provider config on mount
+  const fetchConfig = useCallback(async () => {
+    setIsLoadingConfig(true)
+    try {
+      const res = await fetch('/api/models/config')
+      if (res.ok) {
+        const data: ModelsConfig = await res.json()
+        setKeysStatus(data.keysStatus || {})
+
+        // Update model statuses based on provider availability
+        setModels(prev => prev.map(m => {
+          const providerId = m.providerId
+          const isProviderAvailable = data.providers.find(p => p.id === providerId)?.isAvailable ?? false
+          let newStatus = m.status
+          if (m.isLocal) {
+            // Keep local models as offline unless ollama is detected
+            newStatus = 'offline'
+          } else if (providerId === 'zai') {
+            newStatus = 'available'
+          } else {
+            newStatus = isProviderAvailable ? 'available' : 'offline'
+          }
+          return { ...m, status: newStatus as AIModel['status'] }
+        }))
+      }
+    } catch (err) {
+      console.error('Failed to fetch model config:', err)
+    } finally {
+      setIsLoadingConfig(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchConfig()
+  }, [fetchConfig])
 
   const filteredModels = useMemo(() => {
     if (providerFilter === 'all') return models
@@ -284,6 +417,45 @@ export default function ModelsModule() {
     return '$$$$$'
   }
 
+  // Validate API key
+  const handleValidateKey = async () => {
+    if (!apiKeyInput.trim()) return
+    setIsValidating(true)
+    setValidationResult(null)
+    try {
+      const res = await fetch('/api/models/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: selectedProvider,
+          apiKey: selectedProvider === 'ollama' ? apiKeyInput : apiKeyInput,
+        }),
+      })
+      const data = await res.json()
+      setValidationResult({
+        valid: data.valid,
+        message: data.message,
+      })
+    } catch {
+      setValidationResult({
+        valid: false,
+        message: 'Failed to validate API key - network error',
+      })
+    } finally {
+      setIsValidating(false)
+    }
+  }
+
+  // Provider key info
+  const providerKeyMap: Record<string, { envKey: string; label: string; placeholder: string }> = {
+    mistral: { envKey: 'MISTRAL_API_KEY', label: 'Mistral AI', placeholder: 'Enter your Mistral API key...' },
+    openai: { envKey: 'OPENAI_API_KEY', label: 'OpenAI', placeholder: 'sk-...' },
+    anthropic: { envKey: 'ANTHROPIC_API_KEY', label: 'Anthropic', placeholder: 'sk-ant-...' },
+    google: { envKey: 'GOOGLE_API_KEY', label: 'Google Gemini', placeholder: 'AIza...' },
+    deepseek: { envKey: 'DEEPSEEK_API_KEY', label: 'DeepSeek', placeholder: 'Enter your DeepSeek API key...' },
+    ollama: { envKey: 'OLLAMA_BASE_URL', label: 'Ollama (Local)', placeholder: 'http://localhost:11434' },
+  }
+
   return (
     <div className="flex flex-col gap-4 h-full overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#1e293b transparent' }}>
       {/* Header Row */}
@@ -311,21 +483,38 @@ export default function ModelsModule() {
             ))}
           </div>
         </div>
-        <Button
-          variant={compareMode ? 'default' : 'outline'}
-          size="sm"
-          className={`text-[11px] h-8 gap-1.5 ${compareMode ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'border-neutral-700 text-neutral-400'}`}
-          onClick={() => {
-            setCompareMode(!compareMode)
-            if (compareMode) setCompareIds([])
-          }}
-        >
-          <ArrowRightLeft className="size-3.5" />
-          {compareMode ? 'Comparing' : 'Compare'}
-          {compareIds.length > 0 && (
-            <Badge variant="secondary" className="ml-1 text-[9px] px-1.5 py-0">{compareIds.length}</Badge>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* API Keys Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-[11px] h-8 gap-1.5 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 hover:text-cyan-300"
+            onClick={() => {
+              setApiKeyDialogOpen(true)
+              setValidationResult(null)
+              setApiKeyInput('')
+              setShowApiKey(false)
+            }}
+          >
+            <Key className="size-3.5" />
+            API Keys
+          </Button>
+          <Button
+            variant={compareMode ? 'default' : 'outline'}
+            size="sm"
+            className={`text-[11px] h-8 gap-1.5 ${compareMode ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'border-neutral-700 text-neutral-400'}`}
+            onClick={() => {
+              setCompareMode(!compareMode)
+              if (compareMode) setCompareIds([])
+            }}
+          >
+            <ArrowRightLeft className="size-3.5" />
+            {compareMode ? 'Comparing' : 'Compare'}
+            {compareIds.length > 0 && (
+              <Badge variant="secondary" className="ml-1 text-[9px] px-1.5 py-0">{compareIds.length}</Badge>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Model Cards */}
@@ -392,6 +581,24 @@ export default function ModelsModule() {
               {/* Description */}
               <p className="text-[11px] text-neutral-400 mb-3">{model.description}</p>
 
+              {/* API Key Status for this provider */}
+              {model.providerId !== 'zai' && (
+                <div className="mb-3 flex items-center gap-2">
+                  <Key className="size-3 text-neutral-500" />
+                  {keysStatus[providerKeyMap[model.providerId]?.envKey]?.configured ? (
+                    <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="size-2.5" />
+                      Key configured
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-amber-400 flex items-center gap-1">
+                      <AlertCircle className="size-2.5" />
+                      No API key
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Capabilities */}
               <div className="flex flex-wrap gap-1 mb-3">
                 {model.capabilities.map(cap => (
@@ -435,7 +642,7 @@ export default function ModelsModule() {
                     size="sm"
                     className="flex-1 h-8 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[11px] gap-1.5 border border-neutral-700"
                     onClick={() => setActiveModel(model.id)}
-                    disabled={model.status === 'offline'}
+                    disabled={model.status === 'offline' && !model.isLocal}
                   >
                     <Cpu className="size-3.5" />
                     {model.status === 'offline' ? 'Offline' : 'Select'}
@@ -634,6 +841,188 @@ export default function ModelsModule() {
           </Card>
         </div>
       </div>
+
+      {/* API Keys Configuration Dialog */}
+      <Dialog open={apiKeyDialogOpen} onOpenChange={setApiKeyDialogOpen}>
+        <DialogContent className="bg-[#0d1117] border-neutral-800 text-neutral-200 max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Key className="size-5 text-cyan-400" />
+              API Key Configuration
+            </DialogTitle>
+            <DialogDescription className="text-neutral-500">
+              Configure API keys for different AI providers. Keys are stored securely in your .env file.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Info Banner */}
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-cyan-500/5 border border-cyan-500/20">
+              <Sparkles className="size-4 text-cyan-400 mt-0.5 flex-shrink-0" />
+              <div className="text-[11px] text-neutral-400">
+                <p className="text-neutral-300 font-medium mb-1">How API keys work</p>
+                <p>API keys are stored in your <code className="text-cyan-400 bg-cyan-500/10 px-1 rounded">.env</code> file on the server. They are never exposed to the browser. After adding a key, restart the dev server for it to take effect.</p>
+              </div>
+            </div>
+
+            {/* Provider Tabs */}
+            <Tabs value={selectedProvider} onValueChange={(v) => { setSelectedProvider(v); setValidationResult(null); setApiKeyInput(''); setShowApiKey(false); }}>
+              <TabsList className="bg-neutral-900 border border-neutral-800 w-full h-auto flex-wrap">
+                {Object.entries(providerKeyMap).map(([id, info]) => {
+                  const keyInfo = keysStatus[info.envKey]
+                  return (
+                    <TabsTrigger
+                      key={id}
+                      value={id}
+                      className="text-[11px] data-[state=active]:bg-neutral-800 data-[state=active]:text-cyan-400 flex items-center gap-1.5"
+                    >
+                      {keyInfo?.configured ? (
+                        <CheckCircle2 className="size-3 text-emerald-400" />
+                      ) : (
+                        <AlertCircle className="size-3 text-neutral-600" />
+                      )}
+                      {info.label}
+                    </TabsTrigger>
+                  )
+                })}
+              </TabsList>
+
+              {Object.entries(providerKeyMap).map(([id, info]) => (
+                <TabsContent key={id} value={id} className="mt-4 space-y-4">
+                  {/* Current Status */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-neutral-900/50 border border-neutral-800">
+                    <div>
+                      <p className="text-xs text-neutral-400">Current Status</p>
+                      <p className="text-sm text-neutral-200 flex items-center gap-2 mt-1">
+                        {keysStatus[info.envKey]?.configured ? (
+                          <>
+                            <CheckCircle2 className="size-4 text-emerald-400" />
+                            <span className="text-emerald-400">Configured</span>
+                            <span className="text-[10px] text-neutral-500 font-mono">({keysStatus[info.envKey].masked})</span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="size-4 text-amber-400" />
+                            <span className="text-amber-400">Not configured</span>
+                          </>
+                        )}
+                      </p>
+                    </div>
+                    {PROVIDER_LINKS[info.envKey] && (
+                      <a
+                        href={PROVIDER_LINKS[info.envKey]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors"
+                      >
+                        Get API Key
+                        <ExternalLink className="size-3" />
+                      </a>
+                    )}
+                  </div>
+
+                  {/* Input */}
+                  <div className="space-y-2">
+                    <Label className="text-xs text-neutral-400">
+                      {id === 'ollama' ? 'Ollama Base URL' : `${info.label} API Key`}
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <Input
+                          type={showApiKey ? 'text' : 'password'}
+                          value={apiKeyInput}
+                          onChange={(e) => { setApiKeyInput(e.target.value); setValidationResult(null) }}
+                          placeholder={info.placeholder}
+                          className="bg-neutral-900 border-neutral-700 text-neutral-200 pr-10"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0 text-neutral-500 hover:text-neutral-300"
+                          onClick={() => setShowApiKey(!showApiKey)}
+                        >
+                          {showApiKey ? <EyeOff className="size-3.5" /> : <EyeIcon className="size-3.5" />}
+                        </Button>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 text-[11px] gap-1.5 border-neutral-700 text-neutral-300 hover:text-cyan-400 hover:border-cyan-500/30"
+                        onClick={handleValidateKey}
+                        disabled={!apiKeyInput.trim() || isValidating}
+                      >
+                        {isValidating ? (
+                          <RefreshCw className="size-3.5 animate-spin" />
+                        ) : (
+                          <Check className="size-3.5" />
+                        )}
+                        Validate
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Validation Result */}
+                  {validationResult && (
+                    <div className={`flex items-start gap-2 p-3 rounded-lg border ${
+                      validationResult.valid
+                        ? 'bg-emerald-500/5 border-emerald-500/20'
+                        : 'bg-red-500/5 border-red-500/20'
+                    }`}>
+                      {validationResult.valid ? (
+                        <CheckCircle2 className="size-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+                      ) : (
+                        <AlertCircle className="size-4 text-red-400 mt-0.5 flex-shrink-0" />
+                      )}
+                      <div>
+                        <p className={`text-xs font-medium ${validationResult.valid ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {validationResult.valid ? 'Valid API Key!' : 'Invalid API Key'}
+                        </p>
+                        <p className="text-[11px] text-neutral-400 mt-0.5">{validationResult.message}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Instructions */}
+                  <div className="p-3 rounded-lg bg-neutral-900/30 border border-neutral-800/50">
+                    <p className="text-[11px] text-neutral-500 mb-2 font-medium">Setup Instructions:</p>
+                    <ol className="text-[11px] text-neutral-400 space-y-1.5 list-decimal list-inside">
+                      <li>
+                        {id === 'ollama'
+                          ? 'Install Ollama from ollama.com and start it on your machine'
+                          : `Sign up at ${PROVIDER_LINKS[info.envKey]?.replace('https://', '') || 'the provider website'} and create an API key`
+                        }
+                      </li>
+                      <li>Copy the API key and paste it above to validate</li>
+                      <li>
+                        Add it to your <code className="text-cyan-400 bg-cyan-500/10 px-1 rounded">.env</code> file:
+                        <div className="mt-1.5 p-2 rounded bg-neutral-900 border border-neutral-800 font-mono text-[10px] text-cyan-300">
+                          {info.envKey}={'<your-api-key>'}
+                        </div>
+                      </li>
+                      <li>Restart the dev server for the changes to take effect</li>
+                    </ol>
+                  </div>
+                </TabsContent>
+              ))}
+            </Tabs>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-neutral-400"
+              onClick={() => fetchConfig()}
+            >
+              <RefreshCw className="size-3.5 mr-1.5" />
+              Refresh Status
+            </Button>
+            <DialogClose asChild>
+              <Button size="sm" className="bg-cyan-600 hover:bg-cyan-700 text-white">Done</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Configuration Dialog */}
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>

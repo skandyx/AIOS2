@@ -19,6 +19,7 @@ import {
   Loader2,
   Bot,
   User,
+  Cpu,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -78,6 +79,20 @@ const SYSTEM_PROMPTS = [
   { label: 'Data Analyst', value: 'You are a data analyst. Help interpret data, create visualizations, and provide analytical insights.' },
   { label: 'System Architect', value: 'You are a system architect. Help design scalable, maintainable system architectures.' },
   { label: 'Custom', value: '' },
+]
+
+// ─── Available Models ──────────────────────────────────────────────────────────
+
+const AVAILABLE_MODELS = [
+  { id: '', name: 'Z-AI (Default)', provider: 'Built-in', emoji: '✨', color: '#06b6d4' },
+  { id: 'mistral-large-latest', name: 'Mistral Large', provider: 'Mistral', emoji: '🌊', color: '#06b6d4' },
+  { id: 'mistral-small-latest', name: 'Mistral Small', provider: 'Mistral', emoji: '💧', color: '#06b6d4' },
+  { id: 'open-mistral-nemo', name: 'Mistral Nemo', provider: 'Mistral', emoji: '🔹', color: '#06b6d4' },
+  { id: 'codestral-latest', name: 'Codestral', provider: 'Mistral', emoji: '💻', color: '#06b6d4' },
+  { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'OpenAI', emoji: '🧠', color: '#10b981' },
+  { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI', emoji: '⚡', color: '#10b981' },
+  { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'Anthropic', emoji: '🎭', color: '#f59e0b' },
+  { id: 'deepseek-chat', name: 'DeepSeek V3', provider: 'DeepSeek', emoji: '🔍', color: '#ec4899' },
 ]
 
 // ─── CodeBlock Component ──────────────────────────────────────────────────────
@@ -339,6 +354,7 @@ export default function ChatModule() {
   const [customPrompt, setCustomPrompt] = useState('')
   const [selectedPromptPreset, setSelectedPromptPreset] = useState('Default Assistant')
   const [error, setError] = useState<string | null>(null)
+  const [selectedModel, setSelectedModel] = useState('')
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -425,6 +441,7 @@ export default function ChatModule() {
           message: trimmed,
           conversationId: selectedConversationId,
           systemPrompt,
+          model: selectedModel || undefined,
         }),
       })
 
@@ -615,6 +632,22 @@ export default function ChatModule() {
                 </div>
               </DialogContent>
             </Dialog>
+
+            {/* Model Selector */}
+            <div className="flex items-center gap-1.5">
+              <Cpu className="size-3.5 text-neutral-500" />
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="bg-gray-900 border border-white/10 text-[11px] text-neutral-300 rounded-md px-2 py-1 h-7 outline-none cursor-pointer hover:border-cyan-500/30 focus:border-cyan-500/50 transition-colors"
+              >
+                {AVAILABLE_MODELS.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.emoji} {m.name} {m.provider !== 'Built-in' ? `(${m.provider})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <Badge variant="outline" className="text-[10px] border-cyan-500/30 text-cyan-400 bg-cyan-500/10">
               AI OS

@@ -1,53 +1,19 @@
-# ═══════════════════════════════════════════════════════════════════════════
-# AIOS — AI Operating System — System Requirements
-# For Debian 11+ / Ubuntu 20.04+
-# ═══════════════════════════════════════════════════════════════════════════
-#
-# This file documents all system-level dependencies needed to run AIOS.
-# These are NOT npm packages (those are in package.json).
-# These are OS-level packages and tools that must be installed.
-#
-# Usage:
-#   sudo apt-get install -y $(grep -v '^#' requirements.txt | grep -v '^$')
-#
-# Or use the automated installer:
-#   sudo ./install.sh
-# ═══════════════════════════════════════════════════════════════════════════
+# Optional Python dependencies for AIOS (AI Operating System)
+# This is primarily a Node.js/Bun + Next.js project.
+# These packages are only needed if you run auxiliary Python scripts or tools.
 
-# ─── Core Runtime ────────────────────────────────────────────────────────
-curl            # Download tool (Bun installer, API calls)
-unzip           # Archive extraction
-git             # Version control
+# HTTP & API
+requests>=2.31.0
+httpx>=0.27.0
+websockets>=12.0
 
-# ─── Build Tools ─────────────────────────────────────────────────────────
-build-essential # GCC, make, etc. (needed for native npm modules like sharp)
-python3         # Required by node-gyp for native module compilation
+# AI/ML SDKs
+openai>=1.30.0
+mistralai>=0.4.0
+anthropic>=0.25.0
 
-# ─── Security & Certificates ─────────────────────────────────────────────
-ca-certificates # SSL root certificates (HTTPS connections)
-gnupg           # GPG key management (NodeSource repo signing)
-
-# ─── System Utilities ────────────────────────────────────────────────────
-lsof            # List open files / ports (health checks, debugging)
-procps          # Process monitoring (ps, top, etc.)
-
-# ─── External Runtimes (installed by install.sh) ─────────────────────────
-# bun            # JavaScript runtime — installed via: curl -fsSL https://bun.sh/install | bash
-# nodejs         # Node.js 20.x — installed via NodeSource (needed by Prisma)
-# npm            # Comes with Node.js
-
-# ─── Recommended for Production ──────────────────────────────────────────
-# caddy          # Reverse proxy / gateway — https://caddyserver.com/docs/install
-# nginx          # Alternative reverse proxy
-# systemd        # Service management (pre-installed on Debian/Ubuntu)
-
-# ─── Optional — AI Model Support ────────────────────────────────────────
-# ollama         # Run LLM models locally — https://ollama.ai
-# nvidia-driver  # GPU support for local models
-# cuda-toolkit   # CUDA for GPU-accelerated inference
-
-# ─── Hardware Requirements ──────────────────────────────────────────────
-# RAM:   2 GB minimum, 4 GB recommended (8 GB for local AI models)
-# CPU:   2 cores minimum, 4+ cores recommended
-# Disk:  1 GB for the app, 10+ GB for local AI models
-# GPU:   Optional — NVIDIA GPU with CUDA for local model acceleration
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.7.0
+rich>=13.7.0
+aiofiles>=23.2.0
