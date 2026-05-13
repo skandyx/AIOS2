@@ -1,0 +1,273 @@
+// AI Operating System - Prisma Schema
+// SQLite provider with cuid() IDs and String enums
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── User ────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String?
+  image        String?
+  preferences  String?       // JSON string for user preferences/settings
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  conversations Conversation[]
+  memories      Memory[]
+  tasksCreated  Task[]        @relation("TaskCreator")
+  workflows     Workflow[]
+  plugins       Plugin[]
+  integrations  Integration[]
+}
+
+// ─── Conversation & Messages ─────────────────────────────────────────────────
+
+model Conversation {
+  id          String    @id @default(cuid())
+  title       String?
+  summary     String?   // AI-generated conversation summary
+  model       String?   // LLM model used (e.g. "gpt-4", "claude-3")
+  systemPrompt String?  // System prompt for the conversation
+  isArchived  Boolean   @default(false)
+  isPinned    Boolean   @default(false)
+  tags        String?   // JSON array of tags
+  metadata    String?   // JSON string for additional metadata
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId     String?   // Optional: primary agent assigned to conversation
+  agent       Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  messages    Message[]
+  memories    Memory[]   // Memories extracted from this conversation
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  role           String   // "user" | "assistant" | "system" | "tool"
+  content        String   // Message content (can be markdown, code, etc.)
+  contentType    String?  // "text" | "code" | "image" | "tool_call" | "tool_result"
+  model          String?  // Specific model that generated this message
+  tokenCount     Int?     // Number of tokens in this message
+  attachments    String?  // JSON array of attachment metadata
+  metadata       String?  // JSON string for additional metadata
+  parentMessageId String? // For branching/threaded conversations
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  agentId        String?  // Agent that authored this message (if assistant/tool)
+  agent          Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  memories       Memory[] // Memories extracted from this message
+}
+
+// ─── Memory ──────────────────────────────────────────────────────────────────
+
+model Memory {
+  id           String   @id @default(cuid())
+  type         String   // "short_term" | "long_term" | "contextual" | "procedural" | "user" | "system" | "project" | "error" | "workflow" | "skill"
+  key          String   // Semantic key for the memory
+  value        String   // The memory content
+  summary      String?  // AI-generated summary of the memory
+  importance   Float    @default(0.5) // 0.0 - 1.0 importance score
+  accessCount  Int      @default(0)   // How many times this memory was accessed
+  source       String?  // "conversation" | "task" | "workflow" | "manual" | "system"
+  context      String?  // JSON string with contextual metadata
+  isArchived   Boolean  @default(false)
+  expiresAt    DateTime? // Optional: when this memory should expire
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  conversationId String?  // Optional: conversation this memory was extracted from
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  messageId    String?   // Optional: specific message this memory came from
+  message      Message?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  taskId       String?   // Optional: task this memory relates to
+  task         Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId, type])
+  @@index([userId, key])
+}
+
+// ─── Agents ──────────────────────────────────────────────────────────────────
+
+model Agent {
+  id            String   @id @default(cuid())
+  name          String   // Display name
+  type          String   // "coordinator" | "developer" | "debugger" | "security" | "memory" | "research" | "automation" | "system" | "monitoring" | "workflow" | "voice" | "vision" | "document" | "mcp" | "reasoning" | "planning"
+  description   String?  // What this agent does
+  avatar        String?  // Avatar URL or emoji
+  systemPrompt  String?  // Default system prompt for this agent
+  capabilities  String?  // JSON array of capability strings
+  config        String?  // JSON string for agent configuration
+  model         String?  // Preferred LLM model for this agent
+  isActive      Boolean  @default(true)
+  isDefault     Boolean  @default(false) // Is this a built-in default agent?
+  version       String?  // Agent version
+  metadata      String?  // JSON string for additional metadata
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  conversations Conversation[] // Conversations this agent is assigned to
+  messages      Message[]      // Messages authored by this agent
+  tasksAssigned Task[]         @relation("TaskAssignee") // Tasks assigned to this agent
+}
+
+// ─── Tasks ───────────────────────────────────────────────────────────────────
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?  // Detailed task description
+  status      String   @default("pending") // "pending" | "in_progress" | "completed" | "failed" | "cancelled" | "paused"
+  priority    String   @default("medium")  // "low" | "medium" | "high" | "critical"
+  type        String?  // "automation" | "research" | "development" | "analysis" | "workflow" | "system"
+  result      String?  // Task result or output
+  error       String?  // Error message if task failed
+  progress    Int      @default(0) // 0-100 percentage
+  metadata    String?  // JSON string for additional task metadata
+  dueDate     DateTime? // Optional deadline
+  startedAt   DateTime? // When task was started
+  completedAt DateTime? // When task was completed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  creatorId   String   // User who created the task
+  creator     User     @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+
+  assigneeId  String?  // Agent assigned to the task
+  assignee    Agent?   @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  workflowId  String?  // Optional: workflow this task belongs to
+  workflow    Workflow? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+
+  parentTaskId String? // For subtasks
+  parentTask   Task?   @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  subTasks     Task[]  @relation("TaskHierarchy")
+
+  memories    Memory[] // Memories related to this task
+
+  @@index([status])
+  @@index([priority])
+  @@index([assigneeId])
+}
+
+// ─── Workflows ───────────────────────────────────────────────────────────────
+
+model Workflow {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  nodes       String   // JSON string: array of workflow node definitions
+  edges       String   // JSON string: array of workflow edge connections
+  variables   String?  // JSON string: workflow variables/schema
+  status      String   @default("draft") // "draft" | "active" | "archived" | "error"
+  version     Int      @default(1)
+  isTemplate  Boolean  @default(false) // Is this a reusable template?
+  icon        String?  // Icon/emoji for the workflow
+  category    String?  // Category for organization
+  tags        String?  // JSON array of tags
+  metadata    String?  // JSON string for additional metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tasks       Task[]   // Tasks spawned by this workflow
+  executions  WorkflowExecution[]
+}
+
+model WorkflowExecution {
+  id          String   @id @default(cuid())
+  status      String   @default("running") // "running" | "completed" | "failed" | "cancelled"
+  input       String?  // JSON string: execution input data
+  output      String?  // JSON string: execution output data
+  error       String?  // Error message if execution failed
+  nodeStates  String?  // JSON string: current state of each node during execution
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+  duration    Int?     // Execution duration in milliseconds
+
+  workflowId  String
+  workflow    Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId])
+  @@index([status])
+}
+
+// ─── Plugins ─────────────────────────────────────────────────────────────────
+
+model Plugin {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique // URL-friendly identifier
+  description   String?
+  version       String?  // Plugin version
+  author        String?  // Plugin author
+  category      String?  // "productivity" | "development" | "communication" | "data" | "automation" | "ai" | "utility"
+  icon          String?  // Icon URL or emoji
+  entryPoint    String?  // Path or URL to plugin entry
+  config        String?  // JSON string: plugin configuration schema & values
+  permissions   String?  // JSON array: required permissions
+  isInstalled   Boolean  @default(false)
+  isEnabled     Boolean  @default(true)
+  isOfficial    Boolean  @default(false) // Is this an official plugin?
+  marketplaceId String?  // ID in the marketplace if published
+  rating        Float?   // Marketplace rating (0-5)
+  downloads     Int?     // Marketplace download count
+  tags          String?  // JSON array of tags
+  metadata      String?  // JSON string for additional metadata
+  installedAt   DateTime? // When the plugin was installed
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  userId        String?  // User who installed/owns this plugin
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+// ─── Integrations ────────────────────────────────────────────────────────────
+
+model Integration {
+  id            String   @id @default(cuid())
+  name          String   // Display name (e.g., "My Gmail", "Work Slack")
+  type          String   // "gmail" | "calendar" | "github" | "slack" | "notion" | "jira" | "trello" | "discord" | "linear" | "figma" | "drive" | "sheets" | "custom_mcp" | "webhook"
+  provider      String?  // Service provider identifier
+  description   String?
+  icon          String?  // Icon URL or emoji
+  status        String   @default("disconnected") // "connected" | "disconnected" | "error" | "pending_auth"
+  config        String?  // JSON string: integration configuration (non-sensitive)
+  credentials   String?  // JSON string: encrypted credentials reference (never store raw secrets)
+  scopes        String?  // JSON array: granted OAuth scopes
+  webhookUrl    String?  // Webhook URL if applicable
+  lastSyncedAt  DateTime? // Last successful sync timestamp
+  error         String?  // Last error message
+  metadata      String?  // JSON string for additional metadata
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([status])
+}
