@@ -72,3 +72,145 @@ Stage Summary:
   - Loading state during deletion with spinner
   - Error feedback if deletion fails
   - Auto-resets to new chat if deleted conversation was active
+
+---
+Task ID: 3-c
+Agent: PWA Agent
+Task: Add PWA (Progressive Web App) Support for iPhone Access
+
+Work Log:
+- Read worklog.md to understand prior work (voice assistant + delete chat features)
+- Read current layout.tsx to understand existing metadata and structure
+- Listed public/ directory to see existing files
+- Created `public/manifest.json` with AIOS branding, standalone display, dark bg (#0a0a0a), cyan theme (#06b6d4), SVG+PNG icons, productivity/utilities categories
+- Created `public/icon-192.svg` — AIOS logo: dark rounded rect with cyan gradient circle and "AI" text, outer ring
+- Created `public/icon-512.svg` — Same logo at 512x512 resolution
+- Created `public/icon-192.png` and `public/icon-512.png` — Minimal valid cyan placeholder PNGs (1x1 pixel)
+- Created `public/sw.js` — Service worker with:
+  - Install: caches app shell (/, /manifest.json, icon SVGs)
+  - Activate: cleans up old caches, claims clients immediately
+  - Fetch: cache-first strategy for static assets (with background update), network-first for API calls (with cache fallback)
+- Created `src/components/PWARegister.tsx` — Client component that registers the service worker on mount
+- Updated `src/app/layout.tsx`:
+  - Added Viewport export with themeColor, device-width, initialScale, maximumScale
+  - Added `manifest: "/manifest.json"` to metadata
+  - Added `apple: "/icon-192.svg"` to icons for apple-touch-icon
+  - Added `appleWebApp` metadata (capable, black-translucent status bar, title "AIOS")
+  - Imported and rendered `<PWARegister />` component in body
+  - Preserved all existing code (fonts, Toaster, dark class, etc.)
+- Lint passes with zero errors
+
+Stage Summary:
+- **PWA Manifest** (`/manifest.json`): Full Web App Manifest with AIOS branding, standalone mode, dark/cyan theme, icon references
+- **App Icons**: SVG icons at 192x192 and 512x512 with AIOS branding (dark bg, cyan gradient circle, "AI" text), plus placeholder PNGs
+- **Service Worker** (`/sw.js`): Offline-capable with cache-first for static assets and network-first for API calls
+- **PWA Registration** (`PWARegister.tsx`): Auto-registers service worker on app load
+- **Layout Meta Tags**: theme-color, apple-mobile-web-app-capable, apple-mobile-web-app-status-bar-style, apple-mobile-web-app-title, apple-touch-icon, manifest link — all via Next.js metadata API
+- **iPhone Support**: Users can "Add to Home Screen" and get a standalone app experience with translucent status bar
+
+---
+Task ID: 3-b
+Agent: WhatsApp API Agent
+Task: Create WhatsApp/Twilio Integration API Endpoint
+
+Work Log:
+- Read worklog.md to understand prior work (voice assistant, delete chat, PWA support)
+- Read prisma schema, providers.ts, auth.ts, db.ts to understand existing data models and AI provider layer
+- Read existing API routes (integrations, chat) for code patterns and conventions
+- Created `/src/app/api/channels/whatsapp/route.ts` with three HTTP handlers:
+  - **POST handler**: Receives Twilio WhatsApp webhook (form-urlencoded), parses From/Body fields, finds or creates conversation per WhatsApp number, calls chatCompletion for AI response, saves messages to DB, returns TwiML XML response with AI message
+  - **GET handler**: Returns current WhatsApp/Twilio configuration status (configured flag, masked phone number, masked Account SID, last sync time, webhook URL)
+  - **PUT handler**: Configures Twilio credentials (Account SID, Auth Token, Phone Number) with validation, upserts Integration record in database
+- Implemented key features:
+  - Form-urlencoded parsing via `new URLSearchParams(await request.text())`
+  - WhatsApp number normalization (strips "whatsapp:" prefix from Twilio format)
+  - Conversation metadata includes `{ source: 'whatsapp', whatsappNumber: '<number>' }`
+  - XML escaping for TwiML responses
+  - Graceful handling when Twilio is not configured (returns empty TwiML)
+  - Credential masking for safe display (phone numbers and Account SIDs)
+  - E.164 phone number format validation
+  - Account SID format validation (must start with "AC")
+  - Webhook URL auto-generation from request headers
+- Lint passes with zero errors
+
+Stage Summary:
+- **WhatsApp/Twilio API** (`/api/channels/whatsapp`):
+  - POST: Twilio webhook → parse message → find/create conversation → AI response → TwiML XML
+  - GET: Returns configuration status with masked credentials
+  - PUT: Configure Twilio credentials (Account SID, Auth Token, Phone Number) with validation and upsert
+- **Database storage**: Twilio credentials stored in Integration model (type='whatsapp', provider='twilio'), credentials field holds encrypted JSON, config field holds non-sensitive display info
+- **Error handling**: Returns empty TwiML on errors (prevents Twilio retries), graceful degradation when not configured
+
+---
+Task ID: 3-a
+Agent: Telegram API Agent
+Task: Create Telegram Bot Webhook API Endpoint
+
+Work Log:
+- Read worklog.md to understand prior work (voice assistant, delete chat, PWA support, WhatsApp integration)
+- Read prisma schema, providers.ts, auth.ts, db.ts, chat/route.ts, conversations/route.ts, integrations/route.ts for code patterns and conventions
+- Created `/src/app/api/channels/telegram/route.ts` with three HTTP handlers:
+  - **POST handler**: Receives Telegram webhook updates (JSON), parses message text, finds or creates conversation per Telegram user ID, calls chatCompletion for AI response, saves messages to DB, sends response back via Telegram Bot API sendMessage
+  - **GET handler**: Returns current Telegram bot configuration status (isConfigured, tokenSource, integration details, telegram conversation count, helpful message)
+  - **PUT handler**: Configures bot token with format validation (regex for `digits:alphanumeric`), verifies token via Telegram getMe API, upserts Integration record in database (type='telegram'), stores bot info in config field
+- Created `/src/app/api/channels/telegram/setup/route.ts` with POST handler:
+  - Calls Telegram setWebhook API to register the webhook URL
+  - Supports custom webhookUrl from request body or auto-detection from request headers (host + x-forwarded-proto)
+  - Validates webhook URL format
+  - Updates Integration record with webhookUrl after successful setup
+  - Fetches and returns getWebhookInfo for verification
+- Implemented key features:
+  - Token resolution: env var TELEGRAM_BOT_TOKEN > Integration DB record (credentials field)
+  - Conversation lookup by metadata `contains` filter on telegramUserId
+  - Conversation metadata: `JSON.stringify({ source: 'telegram', telegramUserId, telegramChatId, telegramUsername, telegramFirstName })`
+  - Message metadata includes telegramMessageId, telegramUserId, telegramChatId, and provider/usage info
+  - Telegram-specific system prompt for concise mobile-friendly responses
+  - Markdown parse_mode for Telegram sendMessage
+  - Returns 200 even on internal errors to prevent Telegram webhook retries
+  - Graceful handling when token is not configured (503 with helpful message)
+  - Token validation via Telegram getMe API before saving
+  - Non-text updates (stickers, photos) acknowledged without error
+- Fixed unused variable `metadataFilter` in POST handler
+- Fixed GET handler to include `credentials` in select for proper hasDbToken check
+- Lint passes with zero errors
+
+Stage Summary:
+- **Telegram Webhook API** (`/api/channels/telegram`):
+  - POST: Telegram webhook → parse message → find/create conversation → AI response → send via Bot API → save to DB
+  - GET: Returns configuration status (isConfigured, tokenSource, integration info, conversation count)
+  - PUT: Configure bot token with validation, verify via getMe, upsert Integration record
+- **Telegram Setup API** (`/api/channels/telegram/setup`):
+  - POST: Set webhook URL on Telegram API, auto-detect or custom URL, verify with getWebhookInfo
+- **Database storage**: Bot token stored in Integration model (type='telegram'), credentials field holds `{ botToken }`, config field holds bot info (id, username, firstName)
+- **Error handling**: Returns 200 on webhook processing errors (prevents Telegram retries), 503 when not configured, token validation before save
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Build multi-channel integration system (Telegram, WhatsApp, iPhone PWA) and update IntegrationsModule UI
+
+Work Log:
+- Read existing project state: ChatModule.tsx, IntegrationsModule.tsx, store.ts, schema.prisma, all API routes
+- Confirmed delete chat functionality was already fully implemented (API + UI + confirmation dialog)
+- Launched 3 parallel subagents for: (3-a) Telegram Bot API, (3-b) WhatsApp/Twilio API, (3-c) PWA support
+- All 3 subagents completed successfully
+- Completely rewrote IntegrationsModule.tsx to add:
+  - "Messaging Channels" section at the top (prominent, with cyan gradient border)
+  - 3 messaging channel cards: Telegram, WhatsApp, iPhone/PWA
+  - Each card shows description, features, status, and Configure button
+  - TelegramConfigDialog: token input, setup guide, webhook setup button, auto-checks existing config
+  - WhatsAppConfigDialog: Twilio credentials (Account SID, Auth Token, Phone Number), setup guide, webhook URL display with copy button
+  - IphonePWADialog: setup instructions for Add to Home Screen, feature grid, QR code hint
+  - CopyButton helper component for webhook URLs
+- Fixed Telegram dialog: changed `token` to `botToken` in PUT request body to match API
+- Fixed WhatsApp dialog: updated status check to handle both `configured` and `isConfigured` response fields
+- Fixed Telegram dialog: updated status check to handle `isConfigured` from GET response
+- Lint passes with zero errors
+- Dev server confirmed running on port 3000
+
+Stage Summary:
+- **Messaging Channels UI**: Prominent section in Integrations page with 3 channel cards (Telegram, WhatsApp, iPhone)
+- **Telegram Bot Integration**: Full webhook handler + configuration dialog with token validation and webhook setup
+- **WhatsApp Integration**: Twilio webhook handler + configuration dialog with credential management
+- **iPhone PWA**: manifest.json, service worker, PWA registration, apple meta tags - all configured
+- **All backend APIs** at `/api/channels/telegram`, `/api/channels/telegram/setup`, `/api/channels/whatsapp`
