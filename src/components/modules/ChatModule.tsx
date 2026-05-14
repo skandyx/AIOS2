@@ -40,6 +40,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
@@ -271,13 +281,13 @@ function ConversationList({
   conversations,
   selectedId,
   onSelect,
-  onDelete,
+  onDeleteRequest,
   onNew,
 }: {
   conversations: Conversation[]
   selectedId: string | null
   onSelect: (id: string) => void
-  onDelete: (id: string) => void
+  onDeleteRequest: (id: string) => void
   onNew: () => void
 }) {
   return (
@@ -324,10 +334,10 @@ function ConversationList({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400"
+                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
                   onClick={(e) => {
                     e.stopPropagation()
-                    onDelete(conv.id)
+                    onDeleteRequest(conv.id)
                   }}
                 >
                   <Trash2 className="h-3 w-3" />
@@ -355,6 +365,8 @@ export default function ChatModule() {
   const [customPrompt, setCustomPrompt] = useState('')
   const [selectedPromptPreset, setSelectedPromptPreset] = useState('Default Assistant')
   const [error, setError] = useState<string | null>(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const { selectedModel, setSelectedModel } = useAIOSStore()
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -488,14 +500,20 @@ export default function ChatModule() {
   // ── Delete conversation ───────────────────────────────────────────────────
 
   const handleDeleteConversation = async (id: string) => {
+    setIsDeleting(true)
     try {
-      await fetch(`/api/conversations/${id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete')
       if (selectedConversationId === id) {
         handleNewConversation()
       }
       fetchConversations()
     } catch (err) {
       console.error('Delete error:', err)
+      setError('Failed to delete conversation. Please try again.')
+    } finally {
+      setIsDeleting(false)
+      setDeleteConfirmId(null)
     }
   }
 
@@ -540,7 +558,7 @@ export default function ChatModule() {
               conversations={conversations}
               selectedId={selectedConversationId}
               onSelect={setSelectedConversationId}
-              onDelete={handleDeleteConversation}
+              onDeleteRequest={setDeleteConfirmId}
               onNew={handleNewConversation}
             />
           </motion.div>
@@ -650,6 +668,25 @@ export default function ChatModule() {
               </select>
             </div>
 
+            {/* Delete current conversation */}
+            {selectedConversationId && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                      onClick={() => setDeleteConfirmId(selectedConversationId)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Delete conversation</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
             <Badge variant="outline" className="text-[10px] border-cyan-500/30 text-cyan-400 bg-cyan-500/10">
               AI OS
             </Badge>
@@ -740,6 +777,45 @@ export default function ChatModule() {
           </div>
         </div>
       </div>
+
+      {/* ── Delete Confirmation Dialog ── */}
+      <AlertDialog open={deleteConfirmId !== null} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null) }}>
+        <AlertDialogContent className="bg-gray-900 border-white/10 text-gray-100">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-400 flex items-center gap-2">
+              <Trash2 className="h-5 w-5" />
+              Delete Conversation
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              Are you sure you want to delete this conversation? This action cannot be undone. All messages in this conversation will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-gray-800 border-white/10 text-gray-300 hover:bg-gray-700 hover:text-gray-100">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteConfirmId) handleDeleteConversation(deleteConfirmId)
+              }}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 text-white border-0 disabled:opacity-50"
+            >
+              {isDeleting ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Deleting...
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </span>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
