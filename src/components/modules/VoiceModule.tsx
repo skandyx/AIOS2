@@ -6,7 +6,6 @@ import {
   Mic,
   MicOff,
   Volume2,
-  VolumeX,
   Wifi,
   WifiOff,
   Languages,
@@ -24,7 +23,7 @@ import {
   Play,
   Trash2,
   Send,
-  Settings2,
+  Cpu,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -62,18 +61,51 @@ interface VoiceMessage {
   audioUrl?: string
 }
 
+// ─── Available Models (shared with ChatModule) ────────────────────────────────
+
+const AVAILABLE_MODELS = [
+  { id: '', name: 'Z-AI (Default)', provider: 'Built-in', emoji: '✨' },
+  { id: 'mistral-large-latest', name: 'Mistral Large', provider: 'Mistral', emoji: '🌊' },
+  { id: 'mistral-small-latest', name: 'Mistral Small', provider: 'Mistral', emoji: '💧' },
+  { id: 'open-mistral-nemo', name: 'Mistral Nemo', provider: 'Mistral', emoji: '🔹' },
+  { id: 'codestral-latest', name: 'Codestral', provider: 'Mistral', emoji: '💻' },
+  { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'OpenAI', emoji: '🧠' },
+  { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI', emoji: '⚡' },
+  { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'Anthropic', emoji: '🎭' },
+  { id: 'deepseek-chat', name: 'DeepSeek V3', provider: 'DeepSeek', emoji: '🔍' },
+]
+
+// ─── Available Languages ──────────────────────────────────────────────────────
+
+const AVAILABLE_LANGUAGES = [
+  { id: 'fr', name: 'Français', flag: '🇫🇷' },
+  { id: 'en', name: 'English', flag: '🇬🇧' },
+  { id: 'es', name: 'Español', flag: '🇪🇸' },
+  { id: 'de', name: 'Deutsch', flag: '🇩🇪' },
+  { id: 'it', name: 'Italiano', flag: '🇮🇹' },
+  { id: 'pt', name: 'Português', flag: '🇵🇹' },
+  { id: 'ar', name: 'العربية', flag: '🇸🇦' },
+  { id: 'zh', name: '中文', flag: '🇨🇳' },
+  { id: 'ja', name: '日本語', flag: '🇯🇵' },
+  { id: 'ko', name: '한국어', flag: '🇰🇷' },
+  { id: 'ru', name: 'Русский', flag: '🇷🇺' },
+  { id: 'nl', name: 'Nederlands', flag: '🇳🇱' },
+]
+
 // ─── Audio Level Ring ─────────────────────────────────────────────────────────
 
 function AudioLevelRing({
   level,
   isActive,
   state,
+  size = 152,
 }: {
   level: number
   isActive: boolean
   state: AssistantState
+  size?: number
 }) {
-  const radius = 72
+  const radius = (size - 8) / 2
   const strokeWidth = 4
   const normalizedLevel = Math.min(level / 100, 1)
   const circumference = 2 * Math.PI * radius
@@ -94,21 +126,21 @@ function AudioLevelRing({
 
   return (
     <svg
-      width={(radius + strokeWidth) * 2}
-      height={(radius + strokeWidth) * 2}
-      className="absolute inset-0 -rotate-90"
+      width={size}
+      height={size}
+      className="absolute inset-0 -rotate-90 pointer-events-none"
     >
       <circle
-        cx={radius + strokeWidth}
-        cy={radius + strokeWidth}
+        cx={size / 2}
+        cy={size / 2}
         r={radius}
         fill="none"
         stroke="rgba(255,255,255,0.05)"
         strokeWidth={strokeWidth}
       />
       <circle
-        cx={radius + strokeWidth}
-        cy={radius + strokeWidth}
+        cx={size / 2}
+        cy={size / 2}
         r={radius}
         fill="none"
         stroke={getColor()}
@@ -120,8 +152,8 @@ function AudioLevelRing({
       />
       {isActive && (
         <circle
-          cx={radius + strokeWidth}
-          cy={radius + strokeWidth}
+          cx={size / 2}
+          cy={size / 2}
           r={radius}
           fill="none"
           stroke={getGlowColor()}
@@ -283,7 +315,7 @@ function VoiceMessageBubble({ message, onPlay, isPlaying }: {
 // ─── Main VoiceModule ─────────────────────────────────────────────────────────
 
 export default function VoiceModule() {
-  const { isVoiceActive, setVoiceActive } = useAIOSStore()
+  const { isVoiceActive, setVoiceActive, selectedModel, setSelectedModel, selectedLanguage, setSelectedLanguage } = useAIOSStore()
 
   // Mode & state
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('assistant')
@@ -297,7 +329,6 @@ export default function VoiceModule() {
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt'>('prompt')
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
-  const [selectedLanguage, setSelectedLanguage] = useState('en')
   const [recordingDuration, setRecordingDuration] = useState(0)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -307,7 +338,6 @@ export default function VoiceModule() {
   const [textInput, setTextInput] = useState('')
   const [isPlaying, setIsPlaying] = useState<string | null>(null)
   const [selectedVoice, setSelectedVoice] = useState('tongtong')
-  const [selectedModel, setSelectedModel] = useState('')
 
   // Audio refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -428,8 +458,8 @@ export default function VoiceModule() {
 
   const startSilenceDetection = useCallback((analyser: AnalyserNode) => {
     const SILENCE_THRESHOLD = 8
-    const SILENCE_DURATION = 2000 // 2 seconds of silence = end of speech
-    const MIN_SPEECH_DURATION = 1000 // Minimum recording before allowing silence stop
+    const SILENCE_DURATION = 2000
+    const MIN_SPEECH_DURATION = 1000
     const recordingStartTime = Date.now()
 
     const dataArray = new Uint8Array(analyser.frequencyBinCount)
@@ -442,18 +472,15 @@ export default function VoiceModule() {
       const avg = dataArray.reduce((acc, val) => acc + val, 0) / dataArray.length
 
       if (avg > SILENCE_THRESHOLD) {
-        // Speech detected
         isSpeaking = true
         silenceStartRef.current = 0
       } else if (isSpeaking) {
-        // Potential silence after speech
         if (!silenceStartRef.current) {
           silenceStartRef.current = Date.now()
         } else if (
           Date.now() - silenceStartRef.current > SILENCE_DURATION &&
           Date.now() - recordingStartTime > MIN_SPEECH_DURATION
         ) {
-          // Silence detected after speech, stop and process
           silenceStartRef.current = 0
           isSpeaking = false
           handleRecordingComplete()
@@ -525,7 +552,6 @@ export default function VoiceModule() {
       return
     }
 
-    // Start recording
     const mediaRecorder = new MediaRecorder(result.stream, {
       mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
@@ -540,7 +566,6 @@ export default function VoiceModule() {
     chunksRef.current = []
     mediaRecorder.start(100)
 
-    // Start silence detection
     startSilenceDetection(result.analyser)
   }, [startMicrophone, startSilenceDetection])
 
@@ -549,18 +574,15 @@ export default function VoiceModule() {
   const handleRecordingComplete = useCallback(async () => {
     if (!isListeningLoopRef.current) return
 
-    // Stop current recording
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
     }
     stopLevelMonitoring()
 
-    // Get recorded audio
     const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
     chunksRef.current = []
 
     if (blob.size < 1000) {
-      // Too small, probably just noise, restart listening
       restartListening()
       return
     }
@@ -568,7 +590,6 @@ export default function VoiceModule() {
     setAssistantState('processing')
 
     try {
-      // Convert blob to base64
       const reader = new FileReader()
       const base64Promise = new Promise<string>((resolve, reject) => {
         reader.onloadend = () => {
@@ -581,13 +602,11 @@ export default function VoiceModule() {
       reader.readAsDataURL(blob)
       const audioBase64 = await base64Promise
 
-      // Build conversation history for context (last 10 messages)
       const recentMessages = conversationMessages.slice(-10).map((m) => ({
         role: m.role === 'user' ? 'user' as const : 'assistant' as const,
         content: m.content,
       }))
 
-      // Send to voice assistant API
       const res = await fetch('/api/voice/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -597,6 +616,7 @@ export default function VoiceModule() {
           model: selectedModel || undefined,
           generateSpeech: true,
           voice: selectedVoice,
+          language: selectedLanguage,
         }),
       })
 
@@ -608,7 +628,6 @@ export default function VoiceModule() {
       const data = await res.json()
 
       if (data.transcription && data.transcription.trim()) {
-        // Add user message
         const userMsg: VoiceMessage = {
           id: `user-${Date.now()}`,
           role: 'user',
@@ -618,10 +637,8 @@ export default function VoiceModule() {
         setConversationMessages((prev) => [...prev, userMsg])
 
         if (data.response) {
-          // Add AI response
           let audioUrl: string | undefined
           if (data.audioBase64) {
-            // Create audio URL from base64
             try {
               const binaryString = atob(data.audioBase64)
               const bytes = new Uint8Array(binaryString.length)
@@ -632,7 +649,6 @@ export default function VoiceModule() {
               const audioBlob = new Blob([bytes], { type: mimeType })
               audioUrl = URL.createObjectURL(audioBlob)
             } catch {
-              // If base64 decode fails, the audio might not be available
               console.warn('Failed to decode TTS audio')
             }
           }
@@ -646,7 +662,6 @@ export default function VoiceModule() {
           }
           setConversationMessages((prev) => [...prev, assistantMsg])
 
-          // Play audio if available
           if (audioUrl) {
             await playAudio(audioUrl, assistantMsg.id)
           }
@@ -657,14 +672,13 @@ export default function VoiceModule() {
       setError(err instanceof Error ? err.message : 'Voice assistant error')
     }
 
-    // Restart listening if always-listening is on
     if (isListeningLoopRef.current && isAlwaysListening) {
       restartListening()
     } else {
       setAssistantState('idle')
       isListeningLoopRef.current = false
     }
-  }, [conversationMessages, selectedModel, selectedVoice, isAlwaysListening, stopLevelMonitoring])
+  }, [conversationMessages, selectedModel, selectedVoice, selectedLanguage, isAlwaysListening, stopLevelMonitoring])
 
   // ── Restart listening after response ──────────────────────────────────
 
@@ -673,7 +687,6 @@ export default function VoiceModule() {
 
     setAssistantState('listening')
 
-    // Reuse existing stream if still active
     if (streamRef.current && streamRef.current.active) {
       chunksRef.current = []
       const mediaRecorder = new MediaRecorder(streamRef.current, {
@@ -694,7 +707,6 @@ export default function VoiceModule() {
         startSilenceDetection(analyserRef.current)
       }
     } else {
-      // Need to re-acquire microphone
       startListeningLoop()
     }
   }, [startLevelMonitoring, startSilenceDetection, startListeningLoop])
@@ -770,7 +782,7 @@ export default function VoiceModule() {
       const res = await fetch('/api/voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audioBase64 }),
+        body: JSON.stringify({ audioBase64, language: selectedLanguage }),
       })
 
       if (!res.ok) {
@@ -806,7 +818,6 @@ export default function VoiceModule() {
     setTextInput('')
     setAssistantState('processing')
 
-    // Add user message
     const userMsg: VoiceMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -830,6 +841,7 @@ export default function VoiceModule() {
           model: selectedModel || undefined,
           generateSpeech: true,
           voice: selectedVoice,
+          language: selectedLanguage,
         }),
       })
 
@@ -884,7 +896,6 @@ export default function VoiceModule() {
 
   const toggleAlwaysListening = useCallback(async () => {
     if (isAlwaysListening) {
-      // Turn off
       isListeningLoopRef.current = false
       setIsAlwaysListening(false)
       setAssistantState('idle')
@@ -898,7 +909,6 @@ export default function VoiceModule() {
       }
       setIsPlaying(null)
     } else {
-      // Turn on
       setIsAlwaysListening(true)
       setVoiceActive(true)
       await startListeningLoop()
@@ -909,10 +919,8 @@ export default function VoiceModule() {
 
   const assistantPushToTalk = async () => {
     if (assistantState === 'listening') {
-      // Already listening, stop and process
       handleRecordingComplete()
     } else if (assistantState === 'idle') {
-      // Start a single listening session
       isListeningLoopRef.current = true
       await startListeningLoop()
     }
@@ -937,7 +945,6 @@ export default function VoiceModule() {
   // ── Clear conversation ────────────────────────────────────────────────
 
   const clearConversation = () => {
-    // Revoke any audio URLs
     conversationMessages.forEach((msg) => {
       if (msg.audioUrl) URL.revokeObjectURL(msg.audioUrl)
     })
@@ -997,6 +1004,9 @@ export default function VoiceModule() {
   const stateInfo = getStateInfo()
   const StateIcon = stateInfo.icon
 
+  // Ring size for transcription mode
+  const RING_SIZE = 152
+
   return (
     <div className="flex flex-col h-full w-full bg-gray-950/80 rounded-xl overflow-hidden border border-white/5">
       {/* Header */}
@@ -1054,7 +1064,7 @@ export default function VoiceModule() {
       {voiceMode === 'assistant' && (
         <div className="flex-1 flex flex-col min-h-0">
           {/* Control bar */}
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/5 bg-gray-950/30">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/5 bg-gray-950/30 flex-wrap gap-2">
             <div className="flex items-center gap-3">
               {/* Always-listening toggle */}
               <div className="flex items-center gap-2">
@@ -1068,9 +1078,42 @@ export default function VoiceModule() {
                   Always Listening
                 </span>
               </div>
+
+              {/* Language selector */}
+              <div className="flex items-center gap-1.5">
+                <Languages className="h-3.5 w-3.5 text-gray-500" />
+                <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+                  <SelectTrigger className="h-7 w-[110px] bg-gray-900/50 border-white/10 text-xs text-gray-400">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-800 border-white/10">
+                    {AVAILABLE_LANGUAGES.map((lang) => (
+                      <SelectItem key={lang.id} value={lang.id} className="text-gray-200 text-xs">
+                        {lang.flag} {lang.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Model selector */}
+              <div className="flex items-center gap-1.5">
+                <Cpu className="h-3.5 w-3.5 text-gray-500" />
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="bg-gray-900/50 border border-white/10 text-[11px] text-gray-400 rounded-md px-2 py-1 h-7 outline-none cursor-pointer hover:border-cyan-500/30 focus:border-cyan-500/50 transition-colors"
+                >
+                  {AVAILABLE_MODELS.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.emoji} {m.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Voice selector */}
               <Select value={selectedVoice} onValueChange={setSelectedVoice}>
                 <SelectTrigger className="h-7 w-[100px] bg-gray-900/50 border-white/10 text-xs text-gray-400">
@@ -1124,7 +1167,7 @@ export default function VoiceModule() {
                     </div>
                     <h3 className="text-lg font-medium text-gray-200 mb-1">Voice Assistant</h3>
                     <p className="text-sm text-gray-500 max-w-sm">
-                      Toggle &quot;Always Listening&quot; to talk hands-free, or click the mic button.
+                      Toggle &quot;Always Listening&quot; for hands-free conversation, or press the mic to talk.
                       I&apos;ll listen, think, and respond with voice.
                     </p>
                   </motion.div>
@@ -1179,8 +1222,8 @@ export default function VoiceModule() {
             {/* Mic control area */}
             <div className="px-4 py-3 border-t border-white/5 bg-gray-950/30">
               <div className="flex items-center gap-4 justify-center">
-                {/* Mic button */}
-                <div className="relative flex items-center justify-center">
+                {/* Mic button with proper centering */}
+                <div className="relative flex items-center justify-center" style={{ width: 80, height: 80 }}>
                   {/* Pulse animations when listening */}
                   {assistantState === 'listening' && (
                     <>
@@ -1307,12 +1350,34 @@ export default function VoiceModule() {
 
       {/* ─── Transcription Mode ──────────────────────────────────────────── */}
       {voiceMode === 'transcription' && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 overflow-y-auto">
-          {/* Microphone button area */}
-          <div className="relative flex items-center justify-center mb-6">
+        <div className="flex-1 flex flex-col items-center p-6 overflow-y-auto">
+          {/* Language selector */}
+          <div className="w-full max-w-md mb-4 flex items-center justify-center gap-2">
+            <Languages className="h-4 w-4 text-gray-500" />
+            <span className="text-xs text-gray-500">Language:</span>
+            <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+              <SelectTrigger className="h-7 w-[130px] bg-gray-900/50 border-white/10 text-xs text-gray-400">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-800 border-white/10">
+                {AVAILABLE_LANGUAGES.map((lang) => (
+                  <SelectItem key={lang.id} value={lang.id} className="text-gray-200 text-xs">
+                    {lang.flag} {lang.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Microphone button area - properly centered */}
+          <div
+            className="relative flex items-center justify-center mb-6"
+            style={{ width: RING_SIZE, height: RING_SIZE }}
+          >
             {isRecording && (
               <motion.div
-                className="absolute w-40 h-40 rounded-full"
+                className="absolute rounded-full"
+                style={{ width: RING_SIZE, height: RING_SIZE }}
                 animate={{
                   boxShadow: [
                     '0 0 20px rgba(6,182,212,0.1)',
@@ -1324,7 +1389,7 @@ export default function VoiceModule() {
               />
             )}
 
-            <AudioLevelRing level={audioLevel} isActive={isRecording} state={isRecording ? 'listening' : 'idle'} />
+            <AudioLevelRing level={audioLevel} isActive={isRecording} state={isRecording ? 'listening' : 'idle'} size={RING_SIZE} />
 
             {isRecording && (
               <>
@@ -1346,7 +1411,7 @@ export default function VoiceModule() {
               whileTap={{ scale: 0.95 }}
               onClick={() => isRecording ? stopRecording() : startRecording()}
               disabled={isTranscribing}
-              className={`relative z-10 w-28 h-28 rounded-full flex items-center justify-center transition-all duration-300 ${
+              className={`relative z-10 w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 ${
                 isRecording
                   ? 'bg-cyan-500/20 border-2 border-cyan-400/50 shadow-[0_0_30px_rgba(6,182,212,0.3)]'
                   : micPermission === 'denied'
@@ -1525,6 +1590,10 @@ export default function VoiceModule() {
               <span>•</span>
               <span className={isAlwaysListening ? 'text-cyan-500' : 'text-gray-600'}>
                 {isAlwaysListening ? '🔊 Always On' : '🔇 Manual'}
+              </span>
+              <span>•</span>
+              <span className="text-gray-500">
+                {AVAILABLE_LANGUAGES.find(l => l.id === selectedLanguage)?.flag} {AVAILABLE_LANGUAGES.find(l => l.id === selectedLanguage)?.name}
               </span>
             </>
           ) : (

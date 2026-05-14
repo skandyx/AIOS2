@@ -5,7 +5,7 @@ import { chatCompletion, type ChatMessage } from '@/lib/providers'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { audioBase64, messages, model, systemPrompt, generateSpeech = true, voice } = body
+    const { audioBase64, messages, model, systemPrompt, generateSpeech = true, voice, language } = body
 
     // Mode 1: Audio input → transcribe → respond → optionally speak
     if (audioBase64) {
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       const llmMessages: ChatMessage[] = [
         {
           role: 'system',
-          content: systemPrompt || 'You are a helpful voice assistant. Keep your responses concise and conversational since they will be spoken aloud. Avoid markdown formatting, code blocks, or special characters. Speak naturally as if having a conversation.',
+          content: systemPrompt || `You are a helpful voice assistant. Keep your responses concise and conversational since they will be spoken aloud. Avoid markdown formatting, code blocks, or special characters. Speak naturally as if having a conversation.${language && language !== 'en' ? ` Respond in the user's language (${language}).` : ''}`,
         },
         ...(messages || []).map((m: ChatMessage) => ({
           role: m.role as 'system' | 'user' | 'assistant',
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
       const llmMessages: ChatMessage[] = [
         {
           role: 'system',
-          content: systemPrompt || 'You are a helpful voice assistant. Keep your responses concise and conversational since they will be spoken aloud. Avoid markdown formatting, code blocks, or special characters. Speak naturally as if having a conversation.',
+          content: systemPrompt || `You are a helpful voice assistant. Keep your responses concise and conversational since they will be spoken aloud. Avoid markdown formatting, code blocks, or special characters. Speak naturally as if having a conversation.${language && language !== 'en' ? ` Respond in the user's language (${language}).` : ''}`,
         },
         ...(messages || []).map((m: ChatMessage) => ({
           role: m.role as 'system' | 'user' | 'assistant',

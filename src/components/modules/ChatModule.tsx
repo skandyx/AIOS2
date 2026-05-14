@@ -44,6 +44,7 @@ import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useAIOSStore } from '@/lib/store'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -354,7 +355,7 @@ export default function ChatModule() {
   const [customPrompt, setCustomPrompt] = useState('')
   const [selectedPromptPreset, setSelectedPromptPreset] = useState('Default Assistant')
   const [error, setError] = useState<string | null>(null)
-  const [selectedModel, setSelectedModel] = useState('')
+  const { selectedModel, setSelectedModel } = useAIOSStore()
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)

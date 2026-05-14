@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { audioBase64 } = body
+    const { audioBase64, language } = body
 
     if (!audioBase64 || typeof audioBase64 !== 'string') {
       return NextResponse.json(

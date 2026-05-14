@@ -123,6 +123,12 @@ interface AIOSStore {
   activeModule: AIModule;
   setActiveModule: (module: AIModule) => void;
 
+  // Persistent AI Model & Language
+  selectedModel: string;
+  setSelectedModel: (model: string) => void;
+  selectedLanguage: string;
+  setSelectedLanguage: (lang: string) => void;
+
   // Chat
   conversations: Conversation[];
   activeConversationId: string | null;
@@ -184,10 +190,37 @@ interface AIOSStore {
 
 // ─── Store Implementation ───────────────────────────────────────────────────
 
-export const useAIOSStore = create<AIOSStore>((set) => ({
+export const useAIOSStore = create<AIOSStore>((set) => {
+  // Load persisted values from localStorage (client-side only)
+  const getPersistedModel = () => {
+    if (typeof window === 'undefined') return ''
+    try { return localStorage.getItem('aios-selected-model') || '' } catch { return '' }
+  }
+  const getPersistedLanguage = () => {
+    if (typeof window === 'undefined') return 'en'
+    try { return localStorage.getItem('aios-selected-language') || 'en' } catch { return 'en' }
+  }
+
+  return {
   // Navigation
   activeModule: "chat",
   setActiveModule: (module) => set({ activeModule: module }),
+
+  // Persistent AI Model & Language
+  selectedModel: getPersistedModel(),
+  setSelectedModel: (model) => {
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem('aios-selected-model', model) } catch {}
+    }
+    set({ selectedModel: model })
+  },
+  selectedLanguage: getPersistedLanguage(),
+  setSelectedLanguage: (lang) => {
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem('aios-selected-language', lang) } catch {}
+    }
+    set({ selectedLanguage: lang })
+  },
 
   // Chat
   conversations: [],
@@ -283,4 +316,5 @@ export const useAIOSStore = create<AIOSStore>((set) => ({
     set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
   commandPaletteOpen: false,
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
-}));
+  }
+})
