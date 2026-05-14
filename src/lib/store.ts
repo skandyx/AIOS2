@@ -139,6 +139,7 @@ interface AIOSStore {
   setMessages: (messages: Message[]) => void;
   addMessage: (message: Message) => void;
   setChatLoading: (loading: boolean) => void;
+  deleteConversation: (id: string) => void;
 
   // Agents
   agents: Agent[];
@@ -233,6 +234,12 @@ export const useAIOSStore = create<AIOSStore>((set) => {
   addMessage: (message) =>
     set((state) => ({ messages: [...state.messages, message] })),
   setChatLoading: (loading) => set({ isChatLoading: loading }),
+  deleteConversation: (id) =>
+    set((state) => ({
+      conversations: state.conversations.filter((c) => c.id !== id),
+      activeConversationId: state.activeConversationId === id ? null : state.activeConversationId,
+      messages: state.activeConversationId === id ? [] : state.messages,
+    })),
 
   // Agents
   agents: [],
