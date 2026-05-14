@@ -103,7 +103,7 @@ export default function AIOSDashboard() {
   const [commandSearch, setCommandSearch] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [activeAgents, setActiveAgents] = useState(3);
 
   // ─── WebSocket Connection ──────────────────────────────────────────────
@@ -168,9 +168,11 @@ export default function AIOSDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // ─── Clock ──────────────────────────────────────────────────────────────
+  // ─── Clock (client-only to avoid hydration mismatch) ───────────────────
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    const tick = () => setCurrentTime(new Date());
+    tick(); // Initial set on mount (client-only)
+    const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -463,11 +465,15 @@ export default function AIOSDashboard() {
                 <TooltipContent>{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</TooltipContent>
               </Tooltip>
 
-              {/* Time */}
+              {/* Time (rendered only on client to avoid hydration mismatch) */}
               <div className="hidden lg:flex items-center gap-2 text-xs text-muted-foreground ml-2">
-                <span className="font-mono">
-                  {currentTime.toLocaleTimeString('en-US', { hour12: false })}
-                </span>
+                {currentTime ? (
+                  <span className="font-mono">
+                    {currentTime.toLocaleTimeString('en-US', { hour12: false })}
+                  </span>
+                ) : (
+                  <span className="font-mono text-muted-foreground/30">--:--:--</span>
+                )}
               </div>
             </div>
           </header>
