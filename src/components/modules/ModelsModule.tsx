@@ -457,7 +457,9 @@ export default function ModelsModule() {
   }
 
   return (
-    <div className="flex flex-col gap-4 h-full overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#1e293b transparent' }}>
+    <div className="h-full flex flex-col">
+      <ScrollArea className="flex-1">
+        <div className="flex flex-col gap-4 p-6">
       {/* Header Row */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
         <div className="flex items-center gap-3 flex-wrap">
@@ -1113,6 +1115,8 @@ export default function ModelsModule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+        </div>
+      </ScrollArea>
     </div>
   )
 }

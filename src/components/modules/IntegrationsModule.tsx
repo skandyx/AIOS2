@@ -163,7 +163,9 @@ export default function IntegrationsModule() {
   }
 
   return (
-    <div className="flex flex-col gap-4 h-full overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#1e293b transparent' }}>
+    <div className="h-full flex flex-col">
+      <ScrollArea className="flex-1">
+        <div className="flex flex-col gap-4 p-6">
       {/* Header Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="bg-[#0d1117] border-neutral-800">
@@ -632,6 +634,8 @@ export default function IntegrationsModule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+        </div>
+      </ScrollArea>
     </div>
   )
 }

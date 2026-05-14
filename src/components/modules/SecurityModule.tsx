@@ -154,7 +154,9 @@ export default function SecurityModule() {
   }
 
   return (
-    <div className="flex flex-col gap-4 h-full overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#1e293b transparent' }}>
+    <div className="h-full flex flex-col">
+      <ScrollArea className="flex-1">
+        <div className="flex flex-col gap-4 p-6">
       {/* Top Row: Security Score + Autonomy Level */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Security Score Gauge */}
@@ -406,6 +408,8 @@ export default function SecurityModule() {
           </Card>
         </div>
       </div>
+        </div>
+      </ScrollArea>
     </div>
   )
 }

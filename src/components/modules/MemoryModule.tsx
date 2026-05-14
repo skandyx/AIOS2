@@ -584,7 +584,9 @@ export default function MemoryModule() {
   }, [filteredMemories])
 
   return (
-    <div className="space-y-6">
+    <div className="h-full flex flex-col">
+      <ScrollArea className="flex-1">
+        <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -926,6 +928,8 @@ export default function MemoryModule() {
           )}
         </TabsContent>
       </Tabs>
+        </div>
+      </ScrollArea>
     </div>
   )
 }
