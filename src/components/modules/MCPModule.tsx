@@ -1187,7 +1187,7 @@ export default function MCPModule() {
         </div>
 
         {/* Registry Tab */}
-        <TabsContent value="registry" className="flex-1 overflow-hidden mt-0">
+        <TabsContent value="registry" className="flex-1 min-h-0 overflow-hidden mt-0">
           <ScrollArea className="h-full">
             <div className="p-6">
               {error && !registryLoading ? (
@@ -1256,7 +1256,7 @@ export default function MCPModule() {
         </TabsContent>
 
         {/* Installed Tab */}
-        <TabsContent value="installed" className="flex-1 overflow-hidden mt-0">
+        <TabsContent value="installed" className="flex-1 min-h-0 overflow-hidden mt-0">
           <ScrollArea className="h-full">
             <div className="p-6">
               {installedLoading ? (

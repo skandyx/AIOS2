@@ -1004,7 +1004,7 @@ export default function WorkflowsModule() {
       />
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 min-h-0 overflow-auto p-6">
         <AnimatePresence mode="wait">
           {view === 'grid' ? (
             <motion.div

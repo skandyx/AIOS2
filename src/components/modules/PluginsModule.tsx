@@ -849,7 +849,7 @@ export default function PluginsModule() {
       </div>
 
       {/* Plugin Grid */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-6">
           {filteredPlugins.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">

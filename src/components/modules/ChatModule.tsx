@@ -656,7 +656,7 @@ export default function ChatModule() {
         </div>
 
         {/* Messages Area */}
-        <ScrollArea className="flex-1 px-4 py-4">
+        <ScrollArea className="flex-1 min-h-0 px-4 py-4">
           <div className="max-w-3xl mx-auto space-y-4">
             {messages.length === 0 && !isSending && (
               <motion.div

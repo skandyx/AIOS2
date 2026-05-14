@@ -404,7 +404,7 @@ export default function MonitoringModule() {
       </div>
 
       {/* Content */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="space-y-6 p-6">
           {/* System Health */}
           <div className="flex items-center gap-4">
