@@ -8,7 +8,8 @@ import {
   Cpu, Terminal, Shield, Link2, Mic, ChevronLeft, ChevronRight,
   Bell, Search, Command, Zap, Wifi, WifiOff, Settings,
   Sparkles, LayoutDashboard, Volume2, VolumeX, X, CheckCircle2,
-  AlertTriangle, AlertCircle, Info, Maximize2, Minimize2
+  AlertTriangle, AlertCircle, Info, Maximize2, Minimize2,
+  Wrench, FolderKanban, Package
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +41,9 @@ import ModelsModule from '@/components/modules/ModelsModule';
 import TerminalModule from '@/components/modules/TerminalModule';
 import SecurityModule from '@/components/modules/SecurityModule';
 import IntegrationsModule from '@/components/modules/IntegrationsModule';
+import SkillsModule from '@/components/modules/SkillsModule';
+import MCPModule from '@/components/modules/MCPModule';
+import ProjectsModule from '@/components/modules/ProjectsModule';
 
 // ─── Navigation Config ──────────────────────────────────────────────────────────
 
@@ -58,6 +62,9 @@ const navItems: NavItem[] = [
   { id: 'memory', label: 'Memory', icon: Brain, color: 'text-amber-400', shortcut: '4' },
   { id: 'workflows', label: 'Workflows', icon: Workflow, color: 'text-rose-400', shortcut: '5' },
   { id: 'monitoring', label: 'Monitoring', icon: Activity, color: 'text-green-400', shortcut: '6' },
+  { id: 'skills', label: 'Skills', icon: Wrench, color: 'text-cyan-400', shortcut: 'q' },
+  { id: 'mcp', label: 'MCP Registry', icon: Package, color: 'text-amber-400', shortcut: 'w' },
+  { id: 'projects', label: 'Projects', icon: FolderKanban, color: 'text-rose-400', shortcut: 'e' },
   { id: 'plugins', label: 'Plugins', icon: Puzzle, color: 'text-sky-400', shortcut: '7' },
   { id: 'models', label: 'AI Models', icon: Cpu, color: 'text-indigo-400', shortcut: '8' },
   { id: 'terminal', label: 'Terminal', icon: Terminal, color: 'text-lime-400', shortcut: '9' },
@@ -74,6 +81,9 @@ const moduleComponents: Record<AIModule, React.ComponentType> = {
   memory: MemoryModule,
   workflows: WorkflowsModule,
   monitoring: MonitoringModule,
+  skills: SkillsModule,
+  mcp: MCPModule,
+  projects: ProjectsModule,
   plugins: PluginsModule,
   models: ModelsModule,
   terminal: TerminalModule,
@@ -233,6 +243,9 @@ export default function AIOSDashboard() {
     { id: 'memory', label: 'Go to Memory', icon: Brain, module: 'memory' as AIModule },
     { id: 'workflows', label: 'Go to Workflows', icon: Workflow, module: 'workflows' as AIModule },
     { id: 'monitoring', label: 'Go to Monitoring', icon: Activity, module: 'monitoring' as AIModule },
+    { id: 'skills', label: 'Go to Skills', icon: Wrench, module: 'skills' as AIModule },
+    { id: 'mcp', label: 'Go to MCP Registry', icon: Package, module: 'mcp' as AIModule },
+    { id: 'projects', label: 'Go to Projects', icon: FolderKanban, module: 'projects' as AIModule },
     { id: 'plugins', label: 'Go to Plugins', icon: Puzzle, module: 'plugins' as AIModule },
     { id: 'models', label: 'Go to AI Models', icon: Cpu, module: 'models' as AIModule },
     { id: 'terminal', label: 'Go to Terminal', icon: Terminal, module: 'terminal' as AIModule },

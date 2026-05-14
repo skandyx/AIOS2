@@ -27,6 +27,9 @@ model User {
   workflows     Workflow[]
   plugins       Plugin[]
   integrations  Integration[]
+  skills        Skill[]
+  mcpServers    MCPServer[]
+  projects      Project[]
 }
 
 // ─── Conversation & Messages ─────────────────────────────────────────────────
@@ -160,6 +163,9 @@ model Task {
   workflowId  String?  // Optional: workflow this task belongs to
   workflow    Workflow? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
 
+  projectId   String?  // Optional: project this task belongs to
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
   parentTaskId String? // For subtasks
   parentTask   Task?   @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
   subTasks     Task[]  @relation("TaskHierarchy")
@@ -270,4 +276,159 @@ model Integration {
 
   @@index([userId, type])
   @@index([status])
+}
+
+// ─── Skills (from GitHub repos) ────────────────────────────────────────────
+
+model Skill {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  description   String?
+  version       String?  // Skill version
+  author        String?  // Repo owner / author
+  category      String?  // "automation" | "development" | "ai" | "data" | "productivity" | "communication" | "utility"
+  icon          String?  // Icon URL or emoji
+  tags          String?  // JSON array of tags
+  permissions   String?  // JSON array: required permissions
+  config        String?  // JSON string: skill configuration schema & values
+
+  // Source info
+  sourceType    String   @default("github") // "github" | "local" | "registry"
+  repoUrl       String?  // GitHub repo URL
+  repoOwner     String?  // GitHub repo owner
+  repoName      String?  // GitHub repo name
+  branch        String?  // Branch/tag to use
+  entryPoint    String?  // Path to skill entry file
+  readme        String?  // README content (fetched)
+
+  // Status
+  isInstalled   Boolean  @default(false)
+  isEnabled     Boolean  @default(true)
+  installPath   String?  // Local path where skill was installed
+  isVerified    Boolean  @default(false) // Verified by community / AIOS team
+  rating        Float?   // Community rating (0-5)
+  stars         Int?     // GitHub stars
+  downloads     Int?     // Install count
+  metadata      String?  // JSON string for additional metadata
+
+  installedAt   DateTime? // When the skill was installed
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  userId        String?  // User who installed
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  projectSkills ProjectSkill[]
+
+  @@index([sourceType])
+  @@index([category])
+  @@index([isInstalled])
+}
+
+// ─── MCP Servers ────────────────────────────────────────────────────────────
+
+model MCPServer {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  description   String?
+  version       String?
+  author        String?
+  category      String?  // "database" | "file" | "web" | "ai" | "communication" | "automation" | "development" | "utility"
+  icon          String?  // Icon URL or emoji
+  tags          String?  // JSON array of tags
+  permissions   String?  // JSON array: required permissions
+  config        String?  // JSON string: MCP server configuration (transport, env, etc.)
+
+  // Source info
+  sourceType    String   @default("registry") // "github" | "npm" | "pip" | "local" | "registry"
+  repoUrl       String?  // Source repo URL
+  packageName   String?  // npm/pip package name
+  transportType String   @default("stdio") // "stdio" | "sse" | "websocket"
+  command       String?  // Command to start the server (e.g. "npx", "python")
+  args          String?  // JSON array: command arguments
+  envVars       String?  // JSON object: required environment variables
+  readme        String?  // README content
+
+  // Status
+  isInstalled   Boolean  @default(false)
+  isEnabled     Boolean  @default(true)
+  installPath   String?  // Local path where MCP server was installed
+  isRunning     Boolean  @default(false)
+  isVerified    Boolean  @default(false)
+  rating        Float?
+  stars         Int?
+  downloads     Int?
+  metadata      String?  // JSON string for additional metadata
+
+  installedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  projectMCPServers ProjectMCPServer[]
+
+  @@index([sourceType])
+  @@index([category])
+  @@index([isInstalled])
+}
+
+// ─── Projects ───────────────────────────────────────────────────────────────
+
+model Project {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  status        String   @default("planning") // "planning" | "in_progress" | "on_hold" | "completed" | "archived"
+  priority      String   @default("medium")   // "low" | "medium" | "high" | "critical"
+  category      String?  // "web_app" | "api" | "automation" | "mobile" | "desktop" | "data" | "ai" | "other"
+  icon          String?  // Icon/emoji for the project
+  techStack     String?  // JSON array: technologies used
+  requirements  String?  // Project requirements / specs
+  notes         String?  // Additional notes
+  tags          String?  // JSON array of tags
+  metadata      String?  // JSON string for additional metadata
+  dueDate       DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Relations
+  tasks         Task[]
+  projectSkills ProjectSkill[]
+  projectMCPServers ProjectMCPServer[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model ProjectSkill {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  skillId   String
+  skill     Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  role      String?  // How this skill is used in the project
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, skillId])
+}
+
+model ProjectMCPServer {
+  id         String    @id @default(cuid())
+  projectId  String
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  mcpServerId String
+  mcpServer  MCPServer @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+  role       String?   // How this MCP server is used in the project
+  createdAt  DateTime  @default(now())
+
+  @@unique([projectId, mcpServerId])
 }

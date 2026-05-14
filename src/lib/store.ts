@@ -13,7 +13,10 @@ export type AIModule =
   | "terminal"
   | "security"
   | "integrations"
-  | "voice";
+  | "voice"
+  | "skills"
+  | "mcp"
+  | "projects";
 
 export interface Conversation {
   id: string;
