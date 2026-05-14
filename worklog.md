@@ -264,3 +264,137 @@ Stage Summary:
   - POST endpoint creates WorkflowExecution record
   - Simulated async completion (3s delay, 85% success rate)
   - Validates workflow exists and is active before execution
+
+---
+Task ID: 1
+Agent: Automation Platforms Enhancer
+Task: Enhance WorkflowsModule with Automation Platforms section
+
+Work Log:
+- Read existing WorkflowsModule.tsx (~960 lines) — workflow builder with card grid, visual flow viewer, node palette, execution controls
+- Read worklog.md to understand previous agent contributions (DB schema, WebSocket service, API routes, store/CSS, 8 module components)
+- Created `/src/app/api/automation/platforms/route.ts` — GET endpoint that checks 4 automation platform statuses
+- Enhanced `/src/components/modules/WorkflowsModule.tsx` with Automation Platforms section
+- Added new imports: ExternalLink, RefreshCw, Server, Loader2 from lucide-react; toast from sonner
+- Added AutomationPlatform interface with id, name, icon, description, url, port, status, lastChecked
+- Added PlatformCard component with status dot (green=online, red=offline, amber=checking), Open button, hover effects
+- Added AutomationPlatformsSection component with header, online count badge, Check Status button, horizontal scrollable row
+- Added DEFAULT_PLATFORMS constant with 4 platforms: Activepieces (🧩, port 4200), Node-RED (🔴, port 1880), Huginn (🦅, port 3000), n8n (⚡, port 5678)
+- Added platforms/platformsLoading state and fetchPlatformStatuses callback to main WorkflowsModule component
+- Modified grid view to show Automation Platforms section above the "Your Workflows" grid
+- All code passes ESLint with zero errors (only pre-existing warnings in web-search.ts)
+- Dev server compiles cleanly
+
+Stage Summary:
+- **Automation Platforms API** (`/api/automation/platforms/route.ts`):
+  - GET endpoint returns array of 4 automation platforms with live status
+  - Checks each platform's port reachability using fetch with 3s timeout (AbortController)
+  - Returns platform data with status (online/offline) and lastChecked timestamp
+  - Platforms: Activepieces (port 4200), Node-RED (port 1880), Huginn (port 3000), n8n (port 5678)
+- **Enhanced WorkflowsModule** (`/src/components/modules/WorkflowsModule.tsx`):
+  - New Automation Platforms section at top of grid view, above workflow cards
+  - Header "Automation Platforms" with Server icon and subtitle "Free alternatives for workflow automation"
+  - Online count badge showing X/4 online with green/red indicator dot
+  - Check Status button with loading spinner (RefreshCw/Loader2 icons)
+  - Horizontal scrollable row of compact platform cards
+  - Each PlatformCard: emoji icon, name, port number, status dot (green/red/amber with pulse for online), description, Open button (disabled when offline)
+  - Cards match dark futuristic theme: bg-[#0d1117]/80, neutral-800 borders, cyan/emerald hover accents
+  - Status check calls /api/automation/platforms on mount and on button click
+  - Graceful error handling: falls back to offline status on API failure
+
+---
+Task ID: 3
+Agent: Integrations Module Enhancer
+Task: Enhance IntegrationsModule with Automation Platforms section
+
+Work Log:
+- Read existing IntegrationsModule.tsx (~438 lines) — 12 integration cards with search/filter, connect/disconnect, config dialogs
+- Read worklog.md to understand previous agent contributions
+- Extended Integration interface with `category`, `url`, and `isFree` optional fields
+- Added `IntegrationCategory` type: 'communication' | 'productivity' | 'development' | 'automation' | 'data'
+- Added 4 Automation Platform integrations to INTEGRATIONS array: Activepieces (🧩, port 4200), Node-RED (🔴, port 1880), Huginn (🦅, port 3000), n8n (⚡, port 5678)
+- Added category field to all 16 integration entries for filtering
+- Added CATEGORY_LABELS mapping for filter tab display names
+- Added `filterCategory` state with category filter tabs (All, Communication, Productivity, Development, Automation, Data)
+- Added separator between category and status filter buttons for visual clarity
+- Created special "Automation Platforms" highlighted section at top of integrations list:
+  - Card with amber border accent (border-amber-500/20) and subtle gradient overlay
+  - Header with Workflow icon, "Automation Platforms" title, "Free & Open Source" badge with Sparkles icon
+  - Subtitle: "Free alternatives for workflow automation"
+  - Horizontal 4-column grid of platform cards with amber accent differentiation
+  - Each platform card: emoji icon with status dot, name, Free badge (green), type label in amber, description, capabilities in amber-tinted tags, URL display, Connect button (amber themed, opens new tab), Settings button, Disconnect button when connected
+  - Hover effects: amber border glow, top accent line animation
+- Modified Connect button for automation platforms to open platform URL in new tab via window.open()
+- Enhanced Add Integration dialog: shows Free badge for automation platforms, opens URL in new tab for free platforms, added ScrollArea for long lists
+- Enhanced Config Dialog: shows "Free & Open Source" badge for automation platforms, shows "Platform URL" label instead of "Webhook URL", shows "Open Dashboard" button for platforms with URLs, uses amber-tinted capability badges for automation platforms
+- Separated automation platforms from regular integrations in filtering logic
+- Added new imports: ExternalLink, Workflow, Sparkles from lucide-react
+- Removed unused XCircle import
+- All code passes ESLint with zero errors
+- Dev server compiles cleanly
+
+Stage Summary:
+- **Enhanced IntegrationsModule** (`/src/components/modules/IntegrationsModule.tsx`):
+  - 16 integration cards total: original 12 + 4 automation platforms
+  - Automation Platforms: Activepieces (🧩, localhost:4200), Node-RED (🔴, localhost:1880), Huginn (🦅, localhost:3000), n8n (⚡, localhost:5678)
+  - New Automation Platforms section at top with amber accent differentiation
+  - Category filter tabs: All, Communication, Productivity, Development, Automation, Data
+  - Status filter tabs: All, Connected, Disconnected, Error, Auth (unchanged)
+  - Each automation platform: Free badge (green), Connect button (amber, opens new tab), capabilities in amber-tinted tags, URL display
+  - "Free & Open Source" badge in section header and config dialog
+  - Config dialog enhanced: Platform URL field, Open Dashboard button, amber capability badges for automation platforms
+  - Add Integration dialog enhanced: Free badge display, ScrollArea for overflow, opens URL for free platforms
+  - Dark futuristic theme maintained: bg-[#0d1117], neutral-800 borders, amber accents for automation platforms
+
+---
+Task ID: 2
+Agent: Web Search Enhancer
+Task: Enhance Skills and MCP search with z-ai-web-dev-sdk web search integration
+
+Work Log:
+- Read worklog.md to understand previous agent contributions (DB schema, WebSocket service, API routes, store/CSS, 8 module components, automation platforms)
+- Read existing search routes: `/api/skills/search/route.ts` (curated + GitHub API) and `/api/mcp/search/route.ts` (curated + GitHub API)
+- Read existing frontend modules: `SkillsModule.tsx` and `MCPModule.tsx`
+- Read web-search skill documentation for z-ai-web-dev-sdk pattern: `ZAI.create()` → `zai.functions.invoke('web_search', { query, num })`
+- Created `/src/lib/web-search.ts` — singleton WebSearchService class with caching, retries, and dynamic SDK import
+- Enhanced `/src/app/api/skills/search/route.ts` — added web search alongside GitHub + curated, dedup by URL, curated first
+- Enhanced `/src/app/api/mcp/search/route.ts` — added web search for MCP servers, dedup by URL, curated first
+- Updated `/src/components/modules/SkillsModule.tsx` — added Globe icon, updated source type to include 'web', Web badge rendering
+- Updated `/src/components/modules/MCPModule.tsx` — added Globe + Github icons, updated source type to include 'web' | 'curated' | 'github' | 'registry', source badge on RegistryCard
+- All code passes ESLint with zero errors
+- Dev server compiles cleanly
+
+Stage Summary:
+- **Web Search Utility** (`/src/lib/web-search.ts`):
+  - Singleton class `WebSearchService` with lazy ZAI SDK initialization via dynamic import
+  - `search(query, num)` method with configurable result count (1-20, default 10)
+  - In-memory cache with 5-minute TTL, auto-pruning when cache exceeds 50 entries
+  - Retry logic: 2 max retries with exponential backoff (1s, 2s delays)
+  - Exports `webSearch` singleton instance and `WebSearchResult` interface
+  - Backend-only — uses dynamic import to prevent client-side bundling
+  - Graceful error handling: returns empty array on failure, logs warnings
+- **Enhanced Skills Search API** (`/api/skills/search/route.ts`):
+  - Three search sources: curated → GitHub → web (in priority order)
+  - Web search queries use "AI skill {query}" prefix for better relevance
+  - URL-based deduplication across all three sources
+  - Curated results always first, then GitHub by stars, then web results
+  - Web search failures gracefully continue with GitHub + curated only
+  - SearchResult source type expanded: `'github' | 'curated' | 'web'`
+- **Enhanced MCP Search API** (`/api/mcp/search/route.ts`):
+  - Three search sources: curated → GitHub → web (in priority order)
+  - Web search queries use "MCP server {query}" prefix for better relevance
+  - Added `inferMCPCategory()` function for web results categorization
+  - URL-based deduplication across all three sources
+  - MCPSearchResult source type: `'curated' | 'github' | 'web'`
+  - Web search failures gracefully continue with GitHub + curated only
+- **Updated SkillsModule** (`/src/components/modules/SkillsModule.tsx`):
+  - Added `Globe` icon import from lucide-react
+  - Updated `SearchResult.source` type: `'github' | 'curated' | 'web'`
+  - SkillCard: source badge now shows Globe icon + "Web" for web results
+  - InstallConfirmDialog: source badge shows Globe icon + "Web Search" for web results
+  - Three-way conditional: GitHub → GitHub icon + "GitHub", Web → Globe icon + "Web", Curated → Shield icon + "Curated"
+- **Updated MCPModule** (`/src/components/modules/MCPModule.tsx`):
+  - Added `Globe` and `Github` icon imports from lucide-react
+  - Updated `MCPSearchResult.source` type: `'curated' | 'github' | 'web' | 'registry'`
+  - RegistryCard: added source badge with 4-way icon rendering (Github/Globe/Shield/Package)
+  - Badge shows "GitHub", "Web", "Curated", or "Registry" based on source

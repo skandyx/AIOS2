@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'sonner'
 import {
   Card,
   CardContent,
@@ -47,7 +48,24 @@ import {
   Timer,
   Globe,
   Sparkles,
+  ExternalLink,
+  RefreshCw,
+  Server,
+  Loader2,
 } from 'lucide-react'
+
+// ─── Automation Platform Types ────────────────────────────────────────────────
+
+interface AutomationPlatform {
+  id: string
+  name: string
+  icon: string
+  description: string
+  url: string
+  port: number
+  status: 'online' | 'offline' | 'checking'
+  lastChecked: string | null
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -305,6 +323,113 @@ function formatDuration(ms: number) {
 }
 
 // ─── Sub-Components ──────────────────────────────────────────────────────────
+
+// ─── Automation Platform Card ────────────────────────────────────────────────
+
+function PlatformCard({ platform }: { platform: AutomationPlatform }) {
+  const statusColor = platform.status === 'online'
+    ? 'bg-emerald-400'
+    : platform.status === 'offline'
+      ? 'bg-red-400'
+      : 'bg-amber-400'
+
+  const statusText = platform.status === 'online'
+    ? 'Running'
+    : platform.status === 'offline'
+      ? 'Offline'
+      : 'Checking...'
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      whileHover={{ scale: 1.03 }}
+      className="flex min-w-[200px] shrink-0 flex-col gap-3 rounded-lg border border-neutral-800 bg-[#0d1117]/80 p-4 backdrop-blur-sm transition-all hover:border-cyan-500/30 hover:shadow-lg hover:shadow-cyan-500/5"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">{platform.icon}</span>
+          <div>
+            <p className="text-sm font-medium text-foreground">{platform.name}</p>
+            <p className="text-[10px] text-muted-foreground">Port {platform.port}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className={`h-2 w-2 rounded-full ${statusColor} ${platform.status === 'online' ? 'animate-pulse' : ''}`} />
+          <span className="text-[10px] text-muted-foreground">{statusText}</span>
+        </div>
+      </div>
+      <p className="line-clamp-2 text-xs text-muted-foreground">{platform.description}</p>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 gap-1.5 text-xs border-neutral-800 bg-transparent hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-400"
+        onClick={() => {
+          window.open(platform.url, '_blank', 'noopener,noreferrer')
+        }}
+        disabled={platform.status === 'offline'}
+      >
+        <ExternalLink className="h-3 w-3" />
+        Open
+      </Button>
+    </motion.div>
+  )
+}
+
+// ─── Automation Platforms Section ─────────────────────────────────────────────
+
+function AutomationPlatformsSection({
+  platforms,
+  isChecking,
+  onCheckStatus,
+}: {
+  platforms: AutomationPlatform[]
+  isChecking: boolean
+  onCheckStatus: () => void
+}) {
+  const onlineCount = platforms.filter((p) => p.status === 'online').length
+
+  return (
+    <div className="mb-6">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Server className="h-4 w-4 text-emerald-400" />
+            Automation Platforms
+          </h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Free alternatives for workflow automation
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant="outline" className="gap-1.5 border-neutral-800 text-[10px]">
+            <span className={`h-1.5 w-1.5 rounded-full ${onlineCount > 0 ? 'bg-emerald-400' : 'bg-red-400'}`} />
+            {onlineCount}/{platforms.length} online
+          </Badge>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1.5 text-xs border-neutral-800 bg-transparent hover:border-cyan-500/30 hover:bg-cyan-500/10 hover:text-cyan-400"
+            onClick={onCheckStatus}
+            disabled={isChecking}
+          >
+            {isChecking ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3 w-3" />
+            )}
+            Check Status
+          </Button>
+        </div>
+      </div>
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+        {platforms.map((platform) => (
+          <PlatformCard key={platform.id} platform={platform} />
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function NodeCard({ node, index }: { node: WorkflowNode; index: number }) {
   const config = NODE_CONFIG[node.type]
@@ -679,12 +804,49 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreate }: { open: boolean;
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
+// ─── Default Automation Platforms ─────────────────────────────────────────────
+
+const DEFAULT_PLATFORMS: AutomationPlatform[] = [
+  { id: 'activepieces', name: 'Activepieces', icon: '🧩', description: 'Open-source alternative to Zapier/n8n', url: 'http://localhost:4200', port: 4200, status: 'checking', lastChecked: null },
+  { id: 'node-red', name: 'Node-RED', icon: '🔴', description: 'Flow-based programming tool', url: 'http://localhost:1880', port: 1880, status: 'checking', lastChecked: null },
+  { id: 'huginn', name: 'Huginn', icon: '🦅', description: 'Agent-based automation system', url: 'http://localhost:3100', port: 3100, status: 'checking', lastChecked: null },
+  { id: 'n8n', name: 'n8n', icon: '⚡', description: 'Workflow automation platform', url: 'http://localhost:5678', port: 5678, status: 'checking', lastChecked: null },
+]
+
+// ─── Main Component ──────────────────────────────────────────────────────────
+
 export default function WorkflowsModule() {
   const [workflows, setWorkflows] = useState<WorkflowData[]>(MOCK_WORKFLOWS)
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowData | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [view, setView] = useState<'grid' | 'detail'>('grid')
+  const [platforms, setPlatforms] = useState<AutomationPlatform[]>(DEFAULT_PLATFORMS)
+  const [platformsLoading, setPlatformsLoading] = useState(false)
+
+  // Fetch automation platform statuses
+  const fetchPlatformStatuses = useCallback(async () => {
+    setPlatformsLoading(true)
+    // Set all to checking
+    setPlatforms((prev) => prev.map((p) => ({ ...p, status: 'checking' as const })))
+    try {
+      const res = await fetch('/api/automation/platforms')
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          setPlatforms(data)
+        }
+      } else {
+        // Mark all as offline on API error
+        setPlatforms((prev) => prev.map((p) => ({ ...p, status: 'offline' as const, lastChecked: new Date().toISOString() })))
+      }
+    } catch {
+      // Mark all as offline on fetch error
+      setPlatforms((prev) => prev.map((p) => ({ ...p, status: 'offline' as const, lastChecked: new Date().toISOString() })))
+    } finally {
+      setPlatformsLoading(false)
+    }
+  }, [])
 
   // Fetch workflows from API
   const fetchWorkflows = useCallback(async () => {
@@ -703,7 +865,8 @@ export default function WorkflowsModule() {
 
   useEffect(() => {
     fetchWorkflows()
-  }, [fetchWorkflows])
+    fetchPlatformStatuses()
+  }, [fetchWorkflows, fetchPlatformStatuses])
 
   const handleSelectWorkflow = (wf: WorkflowData) => {
     setSelectedWorkflow(wf)
@@ -849,33 +1012,48 @@ export default function WorkflowsModule() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+              className="space-y-6"
             >
-              {workflows.map((wf) => (
-                <WorkflowCard
-                  key={wf.id}
-                  workflow={wf}
-                  onSelect={() => handleSelectWorkflow(wf)}
-                  onDelete={() => handleDeleteWorkflow(wf)}
-                />
-              ))}
+              {/* Automation Platforms Section */}
+              <AutomationPlatformsSection
+                platforms={platforms}
+                isChecking={platformsLoading}
+                onCheckStatus={fetchPlatformStatuses}
+              />
 
-              {/* Create New Card */}
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Card
-                  className="flex h-full cursor-pointer items-center justify-center border-dashed border-border/50 bg-card/40 backdrop-blur-sm transition-all hover:border-primary/30 hover:bg-card/60"
-                  onClick={() => setCreateOpen(true)}
-                >
-                  <CardContent className="flex flex-col items-center py-8">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <Plus className="h-6 w-6" />
-                    </div>
-                    <p className="mt-3 text-sm font-medium text-muted-foreground">
-                      Create Workflow
-                    </p>
-                  </CardContent>
-                </Card>
-              </motion.div>
+              {/* Workflow Cards Grid */}
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-foreground">
+                  Your Workflows
+                </h3>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {workflows.map((wf) => (
+                    <WorkflowCard
+                      key={wf.id}
+                      workflow={wf}
+                      onSelect={() => handleSelectWorkflow(wf)}
+                      onDelete={() => handleDeleteWorkflow(wf)}
+                    />
+                  ))}
+
+                  {/* Create New Card */}
+                  <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                    <Card
+                      className="flex h-full cursor-pointer items-center justify-center border-dashed border-border/50 bg-card/40 backdrop-blur-sm transition-all hover:border-primary/30 hover:bg-card/60"
+                      onClick={() => setCreateOpen(true)}
+                    >
+                      <CardContent className="flex flex-col items-center py-8">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <Plus className="h-6 w-6" />
+                        </div>
+                        <p className="mt-3 text-sm font-medium text-muted-foreground">
+                          Create Workflow
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                </div>
+              </div>
             </motion.div>
           ) : selectedWorkflow ? (
             <motion.div

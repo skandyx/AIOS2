@@ -47,6 +47,8 @@ import {
   Radio,
   AlertTriangle,
   RefreshCw,
+  Globe,
+  Github,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -66,7 +68,7 @@ interface MCPSearchResult {
   packageName: string
   command?: string
   args?: string
-  source?: string
+  source?: 'curated' | 'github' | 'web' | 'registry'
 }
 
 interface InstalledMCPServer {
@@ -208,6 +210,20 @@ function RegistryCard({
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <TransportBadge type={server.transportType} />
           <CategoryBadge category={server.category} />
+          {server.source && (
+            <Badge variant="outline" className="gap-1 text-[9px] flex items-center">
+              {server.source === 'github' ? (
+                <Github className="h-2.5 w-2.5" />
+              ) : server.source === 'web' ? (
+                <Globe className="h-2.5 w-2.5" />
+              ) : server.source === 'curated' ? (
+                <Shield className="h-2.5 w-2.5" />
+              ) : (
+                <Package className="h-2.5 w-2.5" />
+              )}
+              {server.source === 'github' ? 'GitHub' : server.source === 'web' ? 'Web' : server.source === 'curated' ? 'Curated' : 'Registry'}
+            </Badge>
+          )}
         </div>
 
         {server.packageName && (

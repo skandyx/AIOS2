@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { webSearch } from '@/lib/web-search'
 
 // Curated list of well-known MCP servers as fallback / always-included results
 const CURATED_MCP_SERVERS = [
@@ -171,6 +172,45 @@ interface GitHubRepo {
   topics?: string[]
 }
 
+interface MCPSearchResult {
+  name: string
+  fullName: string
+  description: string
+  url: string
+  stars: number
+  language: string
+  updatedAt?: string
+  transportType: string
+  packageName: string | null
+  category: string
+  source: 'curated' | 'github' | 'web'
+}
+
+/**
+ * Infer MCP category from topics/name
+ */
+function inferMCPCategory(topics: string[], name: string): string {
+  const lowerName = name.toLowerCase()
+  const allTopics = topics.map((t) => t.toLowerCase())
+
+  if (allTopics.some((t) => t.includes('database') || t.includes('postgres') || t.includes('sqlite'))) return 'database'
+  if (allTopics.some((t) => t.includes('file') || t.includes('filesystem'))) return 'file'
+  if (allTopics.some((t) => t.includes('web') || t.includes('search') || t.includes('fetch'))) return 'web'
+  if (allTopics.some((t) => t.includes('ai') || t.includes('llm') || t.includes('memory') || t.includes('thinking'))) return 'ai'
+  if (allTopics.some((t) => t.includes('chat') || t.includes('slack') || t.includes('communication'))) return 'communication'
+  if (allTopics.some((t) => t.includes('automat') || t.includes('browser') || t.includes('puppeteer'))) return 'automation'
+  if (allTopics.some((t) => t.includes('develop') || t.includes('github') || t.includes('git'))) return 'development'
+  if (lowerName.includes('database') || lowerName.includes('postgres') || lowerName.includes('sqlite')) return 'database'
+  if (lowerName.includes('file') || lowerName.includes('filesystem')) return 'file'
+  if (lowerName.includes('search') || lowerName.includes('fetch') || lowerName.includes('web')) return 'web'
+  if (lowerName.includes('ai') || lowerName.includes('memory') || lowerName.includes('thinking')) return 'ai'
+  if (lowerName.includes('slack') || lowerName.includes('chat')) return 'communication'
+  if (lowerName.includes('automat') || lowerName.includes('puppeteer')) return 'automation'
+  if (lowerName.includes('github') || lowerName.includes('git')) return 'development'
+
+  return 'utility'
+}
+
 // GET /api/mcp/search?q=search+query - Search for MCP servers
 export async function GET(request: NextRequest) {
   try {
@@ -180,7 +220,10 @@ export async function GET(request: NextRequest) {
     if (!query) {
       // If no query, return curated list only
       return NextResponse.json({
-        results: CURATED_MCP_SERVERS,
+        results: CURATED_MCP_SERVERS.map((s) => ({
+          ...s,
+          source: 'curated' as const,
+        })),
         total: CURATED_MCP_SERVERS.length,
         source: 'curated',
       })
@@ -189,26 +232,27 @@ export async function GET(request: NextRequest) {
     const queryLower = query.toLowerCase()
 
     // Filter curated servers by query match
-    const matchedCurated = CURATED_MCP_SERVERS.filter(
+    const matchedCurated: MCPSearchResult[] = CURATED_MCP_SERVERS.filter(
       (server) =>
         server.name.toLowerCase().includes(queryLower) ||
         server.description.toLowerCase().includes(queryLower) ||
         server.category.toLowerCase().includes(queryLower) ||
         server.packageName.toLowerCase().includes(queryLower)
-    )
+    ).map((s) => ({
+      name: s.name,
+      fullName: s.fullName,
+      description: s.description,
+      url: s.url,
+      stars: s.stars,
+      language: s.language,
+      transportType: s.transportType,
+      packageName: s.packageName,
+      category: s.category,
+      source: 'curated' as const,
+    }))
 
     // Search GitHub API for MCP servers
-    let githubResults: Array<{
-      name: string
-      fullName: string
-      description: string
-      url: string
-      stars: number
-      language: string
-      updatedAt: string
-      transportType: string
-      packageName: string | null
-    }> = []
+    let githubResults: MCPSearchResult[] = []
 
     try {
       const githubUrl = `https://api.github.com/search/repositories?q=topic:mcp-server+${encodeURIComponent(query)}&sort=stars&per_page=20`
@@ -234,6 +278,8 @@ export async function GET(request: NextRequest) {
           updatedAt: repo.updated_at,
           transportType: 'stdio', // Default, most GitHub MCP servers use stdio
           packageName: null,
+          category: inferMCPCategory(repo.topics || [], repo.name),
+          source: 'github' as const,
         }))
       }
     } catch (githubError) {
@@ -241,13 +287,61 @@ export async function GET(request: NextRequest) {
       // Continue with curated results even if GitHub fails
     }
 
-    // Merge results: curated first, then GitHub (deduplicated by URL)
-    const curatedUrls = new Set(matchedCurated.map((s) => s.url))
-    const uniqueGithubResults = githubResults.filter(
-      (r) => !curatedUrls.has(r.url)
-    )
+    // Search the web for MCP servers
+    let webResults: MCPSearchResult[] = []
 
-    const results = [...matchedCurated, ...uniqueGithubResults]
+    try {
+      const rawWebResults = await webSearch.search(
+        `MCP server ${query}`,
+        10
+      )
+
+      webResults = rawWebResults
+        .filter((r) => r.url && r.name)
+        .map((r) => ({
+          name: r.name,
+          fullName: r.hostName,
+          description: r.snippet || '',
+          url: r.url,
+          stars: 0,
+          language: 'Unknown',
+          updatedAt: r.date || undefined,
+          transportType: 'stdio',
+          packageName: null,
+          category: inferMCPCategory([], r.name + ' ' + r.snippet),
+          source: 'web' as const,
+        }))
+    } catch (webError) {
+      console.warn('Web search for MCP failed, continuing without web results:', webError)
+    }
+
+    // Merge results: curated first, then GitHub, then web (deduplicated by URL)
+    const seenUrls = new Set<string>()
+    const results: MCPSearchResult[] = []
+
+    // Curated first
+    for (const item of matchedCurated) {
+      if (!seenUrls.has(item.url)) {
+        seenUrls.add(item.url)
+        results.push(item)
+      }
+    }
+
+    // GitHub results
+    for (const item of githubResults) {
+      if (!seenUrls.has(item.url)) {
+        seenUrls.add(item.url)
+        results.push(item)
+      }
+    }
+
+    // Web results
+    for (const item of webResults) {
+      if (!seenUrls.has(item.url)) {
+        seenUrls.add(item.url)
+        results.push(item)
+      }
+    }
 
     return NextResponse.json({
       results,

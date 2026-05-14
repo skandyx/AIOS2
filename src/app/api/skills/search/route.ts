@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { webSearch } from '@/lib/web-search'
 
 const SEARCH_TOPICS = [
   'ai-skill',
@@ -165,7 +166,7 @@ interface SearchResult {
   updatedAt: string
   topics: string[]
   category: string
-  source: 'github' | 'curated'
+  source: 'github' | 'curated' | 'web'
 }
 
 /**
@@ -321,16 +322,71 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Merge results: curated skills first, then GitHub results (deduplicating)
-    const seenFullNames = new Set(filteredCurated.map((s) => s.fullName))
-    const uniqueGithubResults = githubResults.filter(
-      (s) => !seenFullNames.has(s.fullName)
-    )
+    // Try web search for additional results
+    let webResults: SearchResult[] = []
 
-    const mergedResults = [...filteredCurated, ...uniqueGithubResults]
+    if (query) {
+      try {
+        const rawWebResults = await webSearch.search(
+          `AI skill ${query}`,
+          10
+        )
 
-    // Sort by stars descending
-    mergedResults.sort((a, b) => b.stars - a.stars)
+        webResults = rawWebResults
+          .filter((r) => r.url && r.name)
+          .map((r) => ({
+            name: r.name,
+            fullName: r.hostName,
+            description: r.snippet || '',
+            url: r.url,
+            stars: 0,
+            language: null,
+            updatedAt: r.date || new Date().toISOString(),
+            topics: [],
+            category: inferCategory([], r.name),
+            source: 'web' as const,
+          }))
+      } catch (error) {
+        console.warn('Web search failed, continuing with GitHub + curated:', error)
+      }
+    }
+
+    // Merge results: curated first, then GitHub, then web (deduplicating by URL)
+    const seenUrls = new Set<string>()
+    const mergedResults: SearchResult[] = []
+
+    // Curated results (always included first)
+    for (const item of filteredCurated) {
+      if (!seenUrls.has(item.url)) {
+        seenUrls.add(item.url)
+        mergedResults.push(item)
+      }
+    }
+
+    // GitHub results
+    for (const item of githubResults) {
+      if (!seenUrls.has(item.url)) {
+        seenUrls.add(item.url)
+        mergedResults.push(item)
+      }
+    }
+
+    // Web results
+    for (const item of webResults) {
+      if (!seenUrls.has(item.url)) {
+        seenUrls.add(item.url)
+        mergedResults.push(item)
+      }
+    }
+
+    // Sort by stars descending, but keep curated first
+    mergedResults.sort((a, b) => {
+      // Curated always first
+      if (a.source === 'curated' && b.source !== 'curated') return -1
+      if (b.source === 'curated' && a.source !== 'curated') return 1
+      // Then by stars
+      return b.stars - a.stars
+    })
 
     return NextResponse.json({
       results: mergedResults,

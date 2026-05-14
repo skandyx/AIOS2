@@ -47,6 +47,7 @@ import {
   ToggleLeft,
   ToggleRight,
   FolderOpen,
+  Globe,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -62,7 +63,7 @@ interface SearchResult {
   language: string
   category: SkillCategory
   topics: string[]
-  source: 'github' | 'curated'
+  source: 'github' | 'curated' | 'web'
 }
 
 interface InstalledSkill {
@@ -210,10 +211,12 @@ function SkillCard({
           <Badge variant="outline" className="text-[9px] border-neutral-700 text-neutral-500 px-1.5 flex items-center gap-1">
             {skill.source === 'github' ? (
               <Github className="h-2.5 w-2.5" />
+            ) : skill.source === 'web' ? (
+              <Globe className="h-2.5 w-2.5" />
             ) : (
               <Shield className="h-2.5 w-2.5" />
             )}
-            {skill.source === 'github' ? 'GitHub' : 'Curated'}
+            {skill.source === 'github' ? 'GitHub' : skill.source === 'web' ? 'Web' : 'Curated'}
           </Badge>
         </div>
 
@@ -419,8 +422,8 @@ function InstallConfirmDialog({
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-neutral-500 font-medium">Source:</span>
             <Badge variant="outline" className="text-[9px] border-neutral-700 text-neutral-400 px-1.5 flex items-center gap-1">
-              {skill.source === 'github' ? <Github className="h-2.5 w-2.5" /> : <Shield className="h-2.5 w-2.5" />}
-              {skill.source === 'github' ? `github.com/${owner}/${name}` : 'Curated Collection'}
+              {skill.source === 'github' ? <Github className="h-2.5 w-2.5" /> : skill.source === 'web' ? <Globe className="h-2.5 w-2.5" /> : <Shield className="h-2.5 w-2.5" />}
+              {skill.source === 'github' ? `github.com/${owner}/${name}` : skill.source === 'web' ? 'Web Search' : 'Curated Collection'}
             </Badge>
           </div>
 

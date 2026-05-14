@@ -149,7 +149,7 @@ const AUTOMATION_TOOLS = [
   { name: 'Activepieces', icon: '🧩', url: 'http://localhost:4200', description: 'Open-source workflow automation' },
   { name: 'Node-RED', icon: '🔴', url: 'http://localhost:1880', description: 'Flow-based programming tool' },
   { name: 'n8n', icon: '⚡', url: 'http://localhost:5678', description: 'Workflow automation platform' },
-  { name: 'Huginn', icon: '🦅', url: 'http://localhost:3000', description: 'Agent-based automation system' },
+  { name: 'Huginn', icon: '🦅', url: 'http://localhost:3100', description: 'Agent-based automation system' },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
