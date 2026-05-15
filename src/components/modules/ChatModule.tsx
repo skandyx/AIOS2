@@ -20,6 +20,7 @@ import {
   Bot,
   User,
   Cpu,
+  AlertCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -459,8 +460,14 @@ export default function ChatModule() {
       })
 
       if (!res.ok) {
-        const errData = await res.json()
-        throw new Error(errData.error || 'Failed to send message')
+        let errorMsg = 'Failed to send message'
+        try {
+          const errData = await res.json()
+          errorMsg = errData.error || errorMsg
+        } catch {
+          // response body not JSON
+        }
+        throw new Error(errorMsg)
       }
 
       const data: ChatResponse = await res.json()
@@ -735,8 +742,26 @@ export default function ChatModule() {
               className="px-4 py-2"
             >
               <Card className="bg-red-500/10 border-red-500/30">
-                <CardContent className="py-2 px-3">
-                  <p className="text-xs text-red-400">{error}</p>
+                <CardContent className="py-3 px-4 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-red-300">{error}</p>
+                  </div>
+                  {(error.includes('Database') || error.includes('DATABASE_URL') || error.includes('prisma')) && (
+                    <p className="text-xs text-red-400/70 ml-6">
+                      Run in terminal: <code className="bg-red-500/10 px-1.5 py-0.5 rounded text-red-300">bunx prisma generate && bunx prisma db push</code>
+                    </p>
+                  )}
+                  {(error.includes('API key') || error.includes('not configured')) && (
+                    <p className="text-xs text-red-400/70 ml-6">
+                      Edit <code className="bg-red-500/10 px-1.5 py-0.5 rounded text-red-300">.env</code> to add your key, or switch to <strong>Z-AI</strong> (built-in, no key needed).
+                    </p>
+                  )}
+                  {error.includes('Z-AI') && (
+                    <p className="text-xs text-red-400/70 ml-6">
+                      The built-in AI may be temporarily unavailable. Try adding a provider API key in <code className="bg-red-500/10 px-1.5 py-0.5 rounded text-red-300">.env</code>.
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             </motion.div>

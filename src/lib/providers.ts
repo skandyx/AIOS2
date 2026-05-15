@@ -384,18 +384,35 @@ async function ollamaChatCompletion(req: ChatCompletionRequest): Promise<ChatCom
 // ─── Chat Completion via z-ai-web-dev-sdk (Default) ────────────────────────
 
 async function zaiChatCompletion(req: ChatCompletionRequest): Promise<ChatCompletionResponse> {
-  const ZAI = (await import('z-ai-web-dev-sdk')).default
-  const zai = await ZAI.create()
+  try {
+    const ZAI = (await import('z-ai-web-dev-sdk')).default
+    const zai = await ZAI.create()
 
-  const completion = await zai.chat.completions.create({
-    messages: req.messages,
-    thinking: { type: 'disabled' },
-  })
+    const completion = await zai.chat.completions.create({
+      messages: req.messages,
+      thinking: { type: 'disabled' },
+    })
 
-  return {
-    content: completion.choices[0]?.message?.content || '',
-    model: req.model || 'zai-default',
-    provider: 'zai',
+    const content = completion.choices[0]?.message?.content || ''
+    if (!content) {
+      throw new Error('Z-AI returned an empty response. The built-in AI may be temporarily unavailable.')
+    }
+
+    return {
+      content,
+      model: req.model || 'zai-default',
+      provider: 'zai',
+    }
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err)
+    // Re-throw with a helpful message
+    if (errMsg.includes('ENOTFOUND') || errMsg.includes('ECONNREFUSED') || errMsg.includes('fetch failed')) {
+      throw new Error('Z-AI (built-in) could not connect to the server. Check your internet connection. You can also configure an external provider (Mistral, OpenAI, etc.) in the .env file.')
+    }
+    if (errMsg.includes('API key') || errMsg.includes('api_key') || errMsg.includes('unauthorized') || errMsg.includes('401')) {
+      throw new Error('Z-AI authentication failed. The built-in provider may need configuration. Try adding an external provider API key in .env.')
+    }
+    throw new Error(`Z-AI error: ${errMsg}`)
   }
 }
 
