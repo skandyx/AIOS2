@@ -259,3 +259,41 @@ Stage Summary:
 - **install.sh fixed**: Auto-detects directory, non-blocking DB init, API keys optional, no REPO_URL required
 - **README.md updated**: 14 modules, PWA, Telegram/WhatsApp, Skills/MCP/Projects, v1.1 changelog
 - **.env.example created**: Template with all env vars including Telegram/WhatsApp
+
+---
+Task ID: 5
+Agent: Main Agent
+Task: Debug "Offline" status and "Failed to process chat message" error on Debian install
+
+Work Log:
+- Investigated the chat error: ChatModule.tsx line 463 throws "Failed to process chat message" when /api/chat returns non-200
+- Found root causes:
+  1. "Offline" status: Socket.IO mini-service (port 3003) was not running → app shows WifiOff + "Offline" in sidebar/footer
+  2. Chat error: Database was not initialized on the user's Debian install (prisma generate + db:push not run)
+  3. No API keys in .env — but Z-AI provider works without keys
+- Initialized database: ran `bunx prisma generate` + `bunx prisma db push` → custom.db created
+- Tested chat API: POST /api/chat returns 200 with proper Z-AI response
+- Improved page.tsx connection status indicator:
+  - Added `isApiReady` state (checks /api/monitoring health endpoint every 30s)
+  - Status now shows 3 levels: "Online" (API + WS), "Partial" (WS only, no API), "Offline" (neither)
+  - Sidebar shows green/amber/red with Wifi/WifiOff icons
+  - Footer shows green/amber/red dot with Online/Partial/Offline text
+  - Removed initial "Connected" notification (was noisy on every page load)
+- Improved ChatModule.tsx error handling:
+  - Better error messages for common failures: DB not ready, server unreachable, API key missing
+  - Database error → "Please restart the app or run: bunx prisma db push"
+  - Network error → "Cannot reach the server. Make sure the app is running"
+  - API key error → includes hint to switch to Z-AI (no key needed)
+  - Added network error help card in error display area
+- Updated install.sh:
+  - Added WebSocket mini-service dependency installation (bun install in mini-services/aios-ws)
+  - Ensures WS service dependencies are installed before starting
+- Started both services (Next.js on port 3000, WebSocket on port 3003)
+- Verified chat API works end-to-end with Z-AI provider
+
+Stage Summary:
+- **Root cause**: DB not initialized + WS service not running on Debian install
+- **Connection status**: Now shows 3 levels (Online/Partial/Offline) based on API health + Socket.IO
+- **Error messages**: Contextual help for DB, network, and API key errors
+- **install.sh**: Now installs WS mini-service dependencies
+- **Chat works**: Z-AI provider returns responses without any API keys needed

@@ -195,6 +195,14 @@ else
     }
 fi
 
+# Also install WebSocket mini-service dependencies
+WS_DIR="${PROJECT_DIR}/mini-services/aios-ws"
+if [[ -f "${WS_DIR}/package.json" ]]; then
+    info "Installation des dépendances du service WebSocket..."
+    cd "${WS_DIR}" && bun install && cd "${PROJECT_DIR}"
+    success "Dépendances WebSocket installées."
+fi
+
 # ============================================================
 #  Step 6: Configure Environment (.env)
 # ============================================================

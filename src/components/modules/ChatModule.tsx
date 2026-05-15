@@ -484,8 +484,17 @@ export default function ChatModule() {
         fetchConversations()
       }
     } catch (err) {
-      console.error('Send error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to send message')
+      console.error('Failed to process chat message', err)
+      let errMsg = err instanceof Error ? err.message : 'Failed to send message'
+      // Provide helpful hints based on common errors
+      if (errMsg.includes('Database not initialized') || errMsg.includes('Check DATABASE_URL')) {
+        errMsg = 'Database not ready. Please restart the app or run: bunx prisma db push'
+      } else if (errMsg.includes('fetch failed') || errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError')) {
+        errMsg = 'Cannot reach the server. Make sure the app is running (bun run dev).'
+      } else if (errMsg.includes('API key not configured') || errMsg.includes('MISTRAL_API_KEY') || errMsg.includes('OPENAI_API_KEY') || errMsg.includes('ANTHROPIC_API_KEY') || errMsg.includes('DEEPSEEK_API_KEY')) {
+        errMsg = errMsg + ' Switch to the built-in Z-AI model (no API key needed) in the model selector above.'
+      }
+      setError(errMsg)
       // Remove optimistic message on error
       setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsg.id))
     } finally {
@@ -755,6 +764,11 @@ export default function ChatModule() {
                   {(error.includes('API key') || error.includes('not configured')) && (
                     <p className="text-xs text-red-400/70 ml-6">
                       Edit <code className="bg-red-500/10 px-1.5 py-0.5 rounded text-red-300">.env</code> to add your key, or switch to <strong>Z-AI</strong> (built-in, no key needed).
+                    </p>
+                  )}
+                  {(error.includes('Cannot reach') || error.includes('fetch failed') || error.includes('NetworkError')) && (
+                    <p className="text-xs text-red-400/70 ml-6">
+                      Make sure the app server is running. Try: <code className="bg-red-500/10 px-1.5 py-0.5 rounded text-red-300">bun run dev</code>
                     </p>
                   )}
                   {error.includes('Z-AI') && (

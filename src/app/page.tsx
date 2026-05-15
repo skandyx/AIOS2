@@ -103,6 +103,7 @@ export default function AIOSDashboard() {
   } = useAIOSStore();
 
   const [isConnected, setIsConnected] = useState(false);
+  const [isApiReady, setIsApiReady] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandSearch, setCommandSearch] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -110,13 +111,14 @@ export default function AIOSDashboard() {
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [activeAgents, setActiveAgents] = useState(3);
 
+  // Socket.IO connection for real-time features
   useEffect(() => {
     const socketInstance = io('/?XTransformPort=3003', {
       transports: ['websocket', 'polling'],
       forceNew: true, reconnection: true,
       reconnectionAttempts: 5, reconnectionDelay: 1000, timeout: 10000,
     });
-    socketInstance.on('connect', () => { setIsConnected(true); addNotification({ type: 'success', title: 'Connected', message: 'Real-time connection established' }); });
+    socketInstance.on('connect', () => { setIsConnected(true); });
     socketInstance.on('disconnect', () => { setIsConnected(false); });
     socketInstance.on('system:metrics', (data: any) => { setSystemMetrics(data); });
     socketInstance.on('notification', (data: any) => { addNotification(data); });
@@ -126,6 +128,21 @@ export default function AIOSDashboard() {
     });
     const socketRef = socketInstance;
     return () => { socketRef.disconnect(); };
+  }, []);
+
+  // Check API health
+  useEffect(() => {
+    const checkApi = async () => {
+      try {
+        const res = await fetch('/api/monitoring');
+        setIsApiReady(res.ok);
+      } catch {
+        setIsApiReady(false);
+      }
+    };
+    checkApi();
+    const interval = setInterval(checkApi, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -214,9 +231,9 @@ export default function AIOSDashboard() {
             </nav>
           </ScrollArea>
           <div className="border-t border-border/50 p-2 space-y-1">
-            <div className={'flex items-center gap-2 px-3 py-2 rounded-lg ' + (isConnected ? 'text-emerald-400' : 'text-red-400')}>
-              {isConnected ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
-              {!sidebarCollapsed && <span className="text-xs">{isConnected ? 'Connected' : 'Offline'}</span>}
+            <div className={'flex items-center gap-2 px-3 py-2 rounded-lg ' + (isApiReady ? 'text-emerald-400' : (isConnected ? 'text-amber-400' : 'text-red-400'))}>
+              {isApiReady ? <Wifi className="w-4 h-4" /> : (isConnected ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />)}
+              {!sidebarCollapsed && <span className="text-xs">{isApiReady ? 'Connected' : (isConnected ? 'Partial' : 'Offline')}</span>}
             </div>
             <button onClick={toggleSidebar} className="flex items-center gap-2 px-3 py-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors w-full">
               {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <><ChevronLeft className="w-4 h-4" /><span className="text-xs">Collapse</span></>}
@@ -266,7 +283,7 @@ export default function AIOSDashboard() {
 
           <footer className="h-7 border-t border-border/50 bg-card/20 backdrop-blur-xl flex items-center justify-between px-4 text-[10px] text-muted-foreground">
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1"><span className={'w-1.5 h-1.5 rounded-full ' + (isConnected ? 'bg-emerald-400' : 'bg-red-400')} /><span>{isConnected ? 'Online' : 'Offline'}</span></div>
+              <div className="flex items-center gap-1"><span className={'w-1.5 h-1.5 rounded-full ' + (isApiReady ? 'bg-emerald-400' : (isConnected ? 'bg-amber-400' : 'bg-red-400'))} /><span>{isApiReady ? 'Online' : (isConnected ? 'Partial' : 'Offline')}</span></div>
               <span>•</span><span>v1.0.0-alpha</span><span>•</span><span>Autonomy: Supervised</span>
             </div>
             <div className="flex items-center gap-3">
