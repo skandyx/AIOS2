@@ -324,13 +324,13 @@ export default function AIOSDashboard() {
             </AnimatePresence>
           </main>
 
-          <footer className="h-7 border-t border-border/50 bg-card/20 backdrop-blur-xl flex items-center justify-between px-4 text-[10px] text-muted-foreground">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1"><span className={'w-1.5 h-1.5 rounded-full ' + (isStandby ? 'bg-amber-400' : (isApiReady ? 'bg-emerald-400' : (isConnected ? 'bg-amber-400' : 'bg-red-400')))} /><span>{isStandby ? 'Standby' : (isApiReady ? 'Online' : (isConnected ? 'Partial' : 'Offline'))}</span></div>
-              <span>•</span><span>v1.0.0-alpha</span><span>•</span><span>Autonomy: Supervised</span>
+          <footer className="h-5 border-t border-border/50 bg-card/20 backdrop-blur-xl flex items-center justify-between px-3 text-[9px] text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1"><span className={'w-1 h-1 rounded-full ' + (isStandby ? 'bg-amber-400' : (isApiReady ? 'bg-emerald-400' : (isConnected ? 'bg-amber-400' : 'bg-red-400')))} /><span>{isStandby ? 'Standby' : (isApiReady ? 'Online' : (isConnected ? 'Partial' : 'Offline'))}</span></div>
+              <span className="text-muted-foreground/40">·</span><span>v1.0.0-alpha</span><span className="text-muted-foreground/40">·</span><span>Supervised</span>
             </div>
-            <div className="flex items-center gap-3">
-              <span>{activeAgents} agents active</span><span>•</span><span>{systemMetrics.totalMemories} memories</span><span>•</span><span className="hidden sm:inline">AIOS — AI Operating System</span>
+            <div className="flex items-center gap-2">
+              <span>{activeAgents} agents</span><span className="text-muted-foreground/40">·</span><span>{systemMetrics.totalMemories} mem</span>
             </div>
           </footer>
         </div>
