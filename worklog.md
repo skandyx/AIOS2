@@ -214,3 +214,48 @@ Stage Summary:
 - **WhatsApp Integration**: Twilio webhook handler + configuration dialog with credential management
 - **iPhone PWA**: manifest.json, service worker, PWA registration, apple meta tags - all configured
 - **All backend APIs** at `/api/channels/telegram`, `/api/channels/telegram/setup`, `/api/channels/whatsapp`
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Fix install.sh (REPO_URL blocking + database blocking + API keys optional) and update README.md
+
+Work Log:
+- Read current README.md, install.sh, .env, package.json, prisma/schema.prisma, page.tsx, layout.tsx, manifest.json
+- Identified root causes of install.sh blocking:
+  1. REPO_URL="" empty + hardcoded PROJECT_DIR="/home/z/my-project" → script fails when run from extracted archive
+  2. `set -e` causes script to abort on any error (including database init failure)
+  3. Missing `prisma generate` before `prisma db push`
+  4. DATABASE_URL path not matching actual db directory structure
+- Rewrote install.sh with these fixes:
+  - Removed `set -e` — handles errors gracefully instead of aborting
+  - Auto-detect project directory via SCRIPT_DIR (where the script is located) — works for git clone AND extracted archives
+  - Removed REPO_URL requirement — if running from extracted archive, just uses current directory
+  - Added `prisma generate` before `db:push` (was missing, causing DB init failure)
+  - Made database initialization non-blocking — if it fails, prints instructions and continues
+  - Made API keys optional — .env created with empty keys, clear message that Z-AI works without keys
+  - Added OS check as warning (not fatal) for non-Debian/Ubuntu systems
+  - Updated WebSocket service detection to check mini-services/aios-ws/ first, then fallback to ws-server.js
+  - Updated success banner with clearer next steps
+- Completely rewrote README.md with all new features:
+  - Updated module count from 11 to 14
+  - Added "What's New" section with v1.1 updates
+  - Added Skills, MCP Registry, Projects modules documentation
+  - Added Multi-Platform Integration section (Telegram, WhatsApp)
+  - Added PWA section (iPhone/Android installation instructions)
+  - Updated Prisma schema from 10 to 14 models
+  - Updated API routes from 18 to 25+
+  - Added channels API documentation (telegram, whatsapp)
+  - Added skills/mcp/projects API documentation
+  - Updated project structure with all new files
+  - Added "Installation (Download & Extract)" section for zip/tar.gz users
+  - Updated voice assistant section with language selection and always-listening
+  - Added persistent model selection note
+  - Updated database schema diagram with new models
+- Created .env.example file (was missing) with all environment variables documented
+- Verified install.sh syntax with `bash -n`
+
+Stage Summary:
+- **install.sh fixed**: Auto-detects directory, non-blocking DB init, API keys optional, no REPO_URL required
+- **README.md updated**: 14 modules, PWA, Telegram/WhatsApp, Skills/MCP/Projects, v1.1 changelog
+- **.env.example created**: Template with all env vars including Telegram/WhatsApp
