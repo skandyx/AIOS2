@@ -502,8 +502,15 @@ async function zaiChatCompletion(req: ChatCompletionRequest): Promise<ChatComple
     const ZAI = (await import('z-ai-web-dev-sdk')).default
     const zai = await ZAI.create()
 
+    // Z-AI SDK uses 'assistant' role for system prompts, not 'system'
+    const zaiMessages = req.messages.map(m => ({
+      role: m.role === 'system' ? 'assistant' as const : m.role as 'user' | 'assistant',
+      content: m.content,
+    }))
+
     const completion = await zai.chat.completions.create({
-      messages: req.messages,
+      messages: zaiMessages,
+      model: req.model || undefined,
       thinking: { type: 'disabled' },
     })
 
@@ -514,7 +521,7 @@ async function zaiChatCompletion(req: ChatCompletionRequest): Promise<ChatComple
 
     return {
       content,
-      model: req.model || 'zai-default',
+      model: completion.model || req.model || 'zai-default',
       provider: 'zai',
     }
   } catch (err) {

@@ -607,69 +607,82 @@ export default function VoiceModule() {
         content: m.content,
       }))
 
-      const res = await fetch('/api/voice/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          audioBase64,
-          messages: recentMessages,
-          model: selectedModel || undefined,
-          generateSpeech: true,
-          voice: selectedVoice,
-          language: selectedLanguage,
-        }),
-      })
+      // Timeout controller - abort after 60 seconds
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 60000)
 
-      if (!res.ok) {
-        const errData = await res.json()
-        throw new Error(errData.error || 'Assistant request failed')
-      }
+      try {
+        const res = await fetch('/api/voice/assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            audioBase64,
+            messages: recentMessages,
+            model: selectedModel || undefined,
+            generateSpeech: true,
+            voice: selectedVoice,
+            language: selectedLanguage,
+          }),
+          signal: controller.signal,
+        })
 
-      const data = await res.json()
-
-      if (data.transcription && data.transcription.trim()) {
-        const userMsg: VoiceMessage = {
-          id: `user-${Date.now()}`,
-          role: 'user',
-          content: data.transcription,
-          timestamp: new Date(),
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData.error || 'Assistant request failed')
         }
-        setConversationMessages((prev) => [...prev, userMsg])
 
-        if (data.response) {
-          let audioUrl: string | undefined
-          if (data.audioBase64) {
-            try {
-              const binaryString = atob(data.audioBase64)
-              const bytes = new Uint8Array(binaryString.length)
-              for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i)
+        const data = await res.json()
+
+        if (data.transcription && data.transcription.trim()) {
+          const userMsg: VoiceMessage = {
+            id: `user-${Date.now()}`,
+            role: 'user',
+            content: data.transcription,
+            timestamp: new Date(),
+          }
+          setConversationMessages((prev) => [...prev, userMsg])
+
+          if (data.response) {
+            let audioUrl: string | undefined
+            if (data.audioBase64) {
+              try {
+                const binaryString = atob(data.audioBase64)
+                const bytes = new Uint8Array(binaryString.length)
+                for (let i = 0; i < binaryString.length; i++) {
+                  bytes[i] = binaryString.charCodeAt(i)
+                }
+                const mimeType = data.audioFormat === 'wav' ? 'audio/wav' : data.audioFormat === 'mp3' ? 'audio/mp3' : 'audio/wav'
+                const audioBlob = new Blob([bytes], { type: mimeType })
+                audioUrl = URL.createObjectURL(audioBlob)
+              } catch {
+                console.warn('Failed to decode TTS audio')
               }
-              const mimeType = data.audioFormat === 'wav' ? 'audio/wav' : data.audioFormat === 'mp3' ? 'audio/mp3' : 'audio/wav'
-              const audioBlob = new Blob([bytes], { type: mimeType })
-              audioUrl = URL.createObjectURL(audioBlob)
-            } catch {
-              console.warn('Failed to decode TTS audio')
+            }
+
+            const assistantMsg: VoiceMessage = {
+              id: `assistant-${Date.now()}`,
+              role: 'assistant',
+              content: data.response,
+              timestamp: new Date(),
+              audioUrl,
+            }
+            setConversationMessages((prev) => [...prev, assistantMsg])
+
+            if (audioUrl) {
+              await playAudio(audioUrl, assistantMsg.id)
             }
           }
-
-          const assistantMsg: VoiceMessage = {
-            id: `assistant-${Date.now()}`,
-            role: 'assistant',
-            content: data.response,
-            timestamp: new Date(),
-            audioUrl,
-          }
-          setConversationMessages((prev) => [...prev, assistantMsg])
-
-          if (audioUrl) {
-            await playAudio(audioUrl, assistantMsg.id)
-          }
         }
+      } finally {
+        clearTimeout(timeoutId)
       }
     } catch (err) {
       console.error('Voice assistant error:', err)
-      setError(err instanceof Error ? err.message : 'Voice assistant error')
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setError('Request timed out — the AI is taking too long. Try again.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Voice assistant error')
+      }
     }
 
     if (isListeningLoopRef.current && isAlwaysListening) {
@@ -832,59 +845,72 @@ export default function VoiceModule() {
         content: m.content,
       }))
 
-      const res = await fetch('/api/voice/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          messages: recentMessages,
-          model: selectedModel || undefined,
-          generateSpeech: true,
-          voice: selectedVoice,
-          language: selectedLanguage,
-        }),
-      })
+      // Timeout controller - abort after 60 seconds
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 60000)
 
-      if (!res.ok) {
-        const errData = await res.json()
-        throw new Error(errData.error || 'Assistant request failed')
-      }
+      try {
+        const res = await fetch('/api/voice/assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            messages: recentMessages,
+            model: selectedModel || undefined,
+            generateSpeech: true,
+            voice: selectedVoice,
+            language: selectedLanguage,
+          }),
+          signal: controller.signal,
+        })
 
-      const data = await res.json()
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData.error || 'Assistant request failed')
+        }
 
-      if (data.response) {
-        let audioUrl: string | undefined
-        if (data.audioBase64) {
-          try {
-            const binaryString = atob(data.audioBase64)
-            const bytes = new Uint8Array(binaryString.length)
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i)
+        const data = await res.json()
+
+        if (data.response) {
+          let audioUrl: string | undefined
+          if (data.audioBase64) {
+            try {
+              const binaryString = atob(data.audioBase64)
+              const bytes = new Uint8Array(binaryString.length)
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i)
+              }
+              const mimeType = data.audioFormat === 'wav' ? 'audio/wav' : data.audioFormat === 'mp3' ? 'audio/mp3' : 'audio/wav'
+              const audioBlob = new Blob([bytes], { type: mimeType })
+              audioUrl = URL.createObjectURL(audioBlob)
+            } catch {
+              console.warn('Failed to decode TTS audio')
             }
-            const mimeType = data.audioFormat === 'wav' ? 'audio/wav' : data.audioFormat === 'mp3' ? 'audio/mp3' : 'audio/wav'
-            const audioBlob = new Blob([bytes], { type: mimeType })
-            audioUrl = URL.createObjectURL(audioBlob)
-          } catch {
-            console.warn('Failed to decode TTS audio')
+          }
+
+          const assistantMsg: VoiceMessage = {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            content: data.response,
+            timestamp: new Date(),
+            audioUrl,
+          }
+          setConversationMessages((prev) => [...prev, assistantMsg])
+
+          if (audioUrl) {
+            await playAudio(audioUrl, assistantMsg.id)
           }
         }
-
-        const assistantMsg: VoiceMessage = {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: data.response,
-          timestamp: new Date(),
-          audioUrl,
-        }
-        setConversationMessages((prev) => [...prev, assistantMsg])
-
-        if (audioUrl) {
-          await playAudio(audioUrl, assistantMsg.id)
-        }
+      } finally {
+        clearTimeout(timeoutId)
       }
     } catch (err) {
       console.error('Text assistant error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to get response')
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setError('Request timed out — the AI is taking too long. Try again.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to get response')
+      }
     } finally {
       if (assistantState !== 'speaking') {
         setAssistantState(isAlwaysListening && isListeningLoopRef.current ? 'listening' : 'idle')

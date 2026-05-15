@@ -462,6 +462,10 @@ export default function ChatModule() {
     setMessages((prev) => [...prev, optimisticUserMsg])
     setInputValue('')
 
+    // Timeout controller - abort after 60 seconds
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 60000)
+
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -472,6 +476,7 @@ export default function ChatModule() {
           systemPrompt,
           model: selectedModel || undefined,
         }),
+        signal: controller.signal,
       })
 
       if (!res.ok) {
@@ -501,8 +506,10 @@ export default function ChatModule() {
     } catch (err) {
       console.error('Failed to process chat message', err)
       let errMsg = err instanceof Error ? err.message : 'Failed to send message'
-      // Provide helpful hints based on common errors
-      if (errMsg.includes('Database not initialized') || errMsg.includes('Check DATABASE_URL')) {
+      // Handle timeout
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        errMsg = 'Request timed out — the AI is taking too long to respond. Try again or switch models.'
+      } else if (errMsg.includes('Database not initialized') || errMsg.includes('Check DATABASE_URL')) {
         errMsg = 'Database not ready. Please restart the app or run: bunx prisma db push'
       } else if (errMsg.includes('fetch failed') || errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError')) {
         errMsg = 'Cannot reach the server. Make sure the app is running (bun run dev).'
@@ -513,6 +520,7 @@ export default function ChatModule() {
       // Remove optimistic message on error
       setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsg.id))
     } finally {
+      clearTimeout(timeoutId)
       setIsSending(false)
       inputRef.current?.focus()
     }
