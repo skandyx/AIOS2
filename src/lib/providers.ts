@@ -5,16 +5,17 @@
  * based on the selected model. Supports:
  * - z-ai-web-dev-sdk (default/built-in)
  * - Mistral AI
- * - OpenAI
- * - Anthropic
+ * - OpenAI (ChatGPT)
+ * - Anthropic (Claude)
  * - Google Gemini
+ * - xAI Grok
  * - DeepSeek
  * - Local Ollama
  */
 
 // ─── Provider Types ────────────────────────────────────────────────────────
 
-export type ProviderId = 'zai' | 'mistral' | 'openai' | 'anthropic' | 'google' | 'deepseek' | 'ollama'
+export type ProviderId = 'zai' | 'mistral' | 'openai' | 'anthropic' | 'google' | 'deepseek' | 'ollama' | 'grok'
 
 export interface ProviderConfig {
   id: ProviderId
@@ -66,14 +67,27 @@ const MODEL_PROVIDER_MAP: Record<string, ProviderId> = {
   'gpt4o': 'zai',
   'claude-3.5-sonnet': 'zai',
   'claude-3-opus': 'zai',
-  'mistral-large': 'mistral',
-  'mistral-medium': 'mistral',
-  'mistral-small': 'mistral',
+  'mistral-large-latest': 'mistral',
+  'mistral-medium-latest': 'mistral',
+  'mistral-small-latest': 'mistral',
   'open-mistral-nemo': 'mistral',
-  'codestral': 'mistral',
+  'codestral-latest': 'mistral',
+  'gpt-4-turbo': 'openai',
+  'gpt-4o': 'openai',
+  'gpt-4o-mini': 'openai',
+  'claude-3-5-sonnet-20241022': 'anthropic',
+  'claude-3-opus-20240229': 'anthropic',
+  'claude-3-haiku-20240307': 'anthropic',
   'gemini-pro': 'google',
-  'deepseek-v3': 'deepseek',
-  'llama-3.1': 'ollama',
+  'gemini-1.5-flash': 'google',
+  'gemini-2.0-flash': 'google',
+  'grok-3': 'grok',
+  'grok-3-mini': 'grok',
+  'grok-2': 'grok',
+  'deepseek-chat': 'deepseek',
+  'deepseek-coder': 'deepseek',
+  'deepseek-reasoner': 'deepseek',
+  'llama3.1': 'ollama',
   'codellama': 'ollama',
 }
 
@@ -153,6 +167,18 @@ export function getProviders(): ProviderConfig[] {
         { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', providerId: 'deepseek', providerName: 'DeepSeek', capabilities: ['reasoning'], contextWindow: '64K', maxTokens: 4096 },
       ],
       isAvailable: !!process.env.DEEPSEEK_API_KEY,
+    },
+    {
+      id: 'grok',
+      name: 'xAI Grok',
+      envKey: 'XAI_API_KEY',
+      baseUrl: 'https://api.x.ai/v1',
+      models: [
+        { id: 'grok-3', name: 'Grok 3', providerId: 'grok', providerName: 'xAI', capabilities: ['chat', 'code', 'reasoning'], contextWindow: '131K', maxTokens: 8192 },
+        { id: 'grok-3-mini', name: 'Grok 3 Mini', providerId: 'grok', providerName: 'xAI', capabilities: ['chat', 'code', 'reasoning'], contextWindow: '131K', maxTokens: 8192 },
+        { id: 'grok-2', name: 'Grok 2', providerId: 'grok', providerName: 'xAI', capabilities: ['chat', 'code'], contextWindow: '131K', maxTokens: 4096 },
+      ],
+      isAvailable: !!process.env.XAI_API_KEY,
     },
     {
       id: 'ollama',
@@ -381,6 +407,94 @@ async function ollamaChatCompletion(req: ChatCompletionRequest): Promise<ChatCom
   }
 }
 
+// ─── Chat Completion via xAI Grok API ──────────────────────────────────────
+
+async function grokChatCompletion(req: ChatCompletionRequest): Promise<ChatCompletionResponse> {
+  const apiKey = process.env.XAI_API_KEY
+  if (!apiKey) throw new Error('XAI_API_KEY is not configured')
+
+  const response = await fetch('https://api.x.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: req.model || 'grok-3',
+      messages: req.messages,
+      temperature: req.temperature ?? 0.7,
+      max_tokens: req.maxTokens ?? 4096,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`xAI Grok API error: ${response.status} - ${error}`)
+  }
+
+  const data = await response.json()
+  return {
+    content: data.choices[0]?.message?.content || '',
+    model: data.model || req.model || 'grok-3',
+    provider: 'grok',
+    usage: data.usage ? {
+      promptTokens: data.usage.prompt_tokens,
+      completionTokens: data.usage.completion_tokens,
+      totalTokens: data.usage.total_tokens,
+    } : undefined,
+  }
+}
+
+// ─── Chat Completion via Google Gemini API ──────────────────────────────────
+
+async function googleChatCompletion(req: ChatCompletionRequest): Promise<ChatCompletionResponse> {
+  const apiKey = process.env.GOOGLE_API_KEY
+  if (!apiKey) throw new Error('GOOGLE_API_KEY is not configured')
+
+  const model = req.model || 'gemini-pro'
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+
+  // Convert messages to Gemini format
+  const contents = req.messages
+    .filter(m => m.role !== 'system')
+    .map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }))
+
+  const systemInstruction = req.messages.find(m => m.role === 'system')
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents,
+      ...(systemInstruction ? { systemInstruction: { parts: [{ text: systemInstruction.content }] } } : {}),
+      generationConfig: {
+        temperature: req.temperature ?? 0.7,
+        maxOutputTokens: req.maxTokens ?? 4096,
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Google Gemini API error: ${response.status} - ${error}`)
+  }
+
+  const data = await response.json()
+  return {
+    content: data.candidates?.[0]?.content?.parts?.[0]?.text || '',
+    model,
+    provider: 'google',
+    usage: data.usageMetadata ? {
+      promptTokens: data.usageMetadata.promptTokenCount,
+      completionTokens: data.usageMetadata.candidatesTokenCount,
+      totalTokens: data.usageMetadata.totalTokenCount,
+    } : undefined,
+  }
+}
+
 // ─── Chat Completion via z-ai-web-dev-sdk (Default) ────────────────────────
 
 async function zaiChatCompletion(req: ChatCompletionRequest): Promise<ChatCompletionResponse> {
@@ -428,6 +542,10 @@ export async function chatCompletion(req: ChatCompletionRequest): Promise<ChatCo
       return openaiChatCompletion(req)
     case 'anthropic':
       return anthropicChatCompletion(req)
+    case 'google':
+      return googleChatCompletion(req)
+    case 'grok':
+      return grokChatCompletion(req)
     case 'deepseek':
       return deepseekChatCompletion(req)
     case 'ollama':
@@ -464,6 +582,10 @@ export function getConfiguredKeysStatus(): Record<string, { configured: boolean;
     GOOGLE_API_KEY: {
       configured: !!process.env.GOOGLE_API_KEY,
       masked: process.env.GOOGLE_API_KEY ? maskApiKey(process.env.GOOGLE_API_KEY) : '',
+    },
+    XAI_API_KEY: {
+      configured: !!process.env.XAI_API_KEY,
+      masked: process.env.XAI_API_KEY ? maskApiKey(process.env.XAI_API_KEY) : '',
     },
     DEEPSEEK_API_KEY: {
       configured: !!process.env.DEEPSEEK_API_KEY,

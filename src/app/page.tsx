@@ -8,7 +8,7 @@ import {
   Bell, Search, Command, Zap, Wifi, WifiOff, Settings,
   Sparkles, LayoutDashboard, Volume2, VolumeX, X, CheckCircle2,
   AlertTriangle, AlertCircle, Info, Maximize2, Minimize2,
-  Wrench, FolderKanban, Package
+  Wrench, FolderKanban, Package, Power, PowerOff, Moon, Sun
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -104,6 +104,7 @@ export default function AIOSDashboard() {
 
   const [isConnected, setIsConnected] = useState(false);
   const [isApiReady, setIsApiReady] = useState(false);
+  const [isStandby, setIsStandby] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandSearch, setCommandSearch] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -231,9 +232,21 @@ export default function AIOSDashboard() {
             </nav>
           </ScrollArea>
           <div className="border-t border-border/50 p-2 space-y-1">
-            <div className={'flex items-center gap-2 px-3 py-2 rounded-lg ' + (isApiReady ? 'text-emerald-400' : (isConnected ? 'text-amber-400' : 'text-red-400'))}>
-              {isApiReady ? <Wifi className="w-4 h-4" /> : (isConnected ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />)}
-              {!sidebarCollapsed && <span className="text-xs">{isApiReady ? 'Connected' : (isConnected ? 'Partial' : 'Offline')}</span>}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setIsStandby(!isStandby)}
+                  className={'flex items-center gap-2 px-3 py-2 rounded-lg w-full transition-all duration-300 ' + (isStandby ? 'bg-amber-500/10 text-amber-400' : 'text-emerald-400 hover:bg-white/5')}
+                >
+                  {isStandby ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
+                  {!sidebarCollapsed && <span className="text-xs font-medium">{isStandby ? 'Standby' : 'Active'}</span>}
+                </button>
+              </TooltipTrigger>
+              {sidebarCollapsed && <TooltipContent side="right">{isStandby ? 'Wake Up' : 'Standby Mode'}</TooltipContent>}
+            </Tooltip>
+            <div className={'flex items-center gap-2 px-3 py-2 rounded-lg ' + (isApiReady && !isStandby ? 'text-emerald-400' : (isStandby ? 'text-amber-400' : (isConnected ? 'text-amber-400' : 'text-red-400')))}>
+              {isStandby ? <Moon className="w-4 h-4" /> : (isApiReady ? <Wifi className="w-4 h-4" /> : (isConnected ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />))}
+              {!sidebarCollapsed && <span className="text-xs">{isStandby ? 'Standby' : (isApiReady ? 'Connected' : (isConnected ? 'Partial' : 'Offline'))}</span>}
             </div>
             <button onClick={toggleSidebar} className="flex items-center gap-2 px-3 py-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors w-full">
               {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <><ChevronLeft className="w-4 h-4" /><span className="text-xs">Collapse</span></>}
@@ -275,15 +288,45 @@ export default function AIOSDashboard() {
 
           <main className="flex-1 overflow-hidden">
             <AnimatePresence mode="wait">
-              <motion.div key={activeModule} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2, ease: 'easeOut' }} className="h-full">
-                <ActiveModuleComponent />
-              </motion.div>
+              {isStandby ? (
+                <motion.div
+                  key="standby"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="h-full flex items-center justify-center"
+                >
+                  <div className="flex flex-col items-center gap-6 text-center">
+                    <div className="relative">
+                      <div className="w-24 h-24 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30 flex items-center justify-center shadow-[0_0_40px_rgba(245,158,11,0.15)]">
+                        <Moon className="w-10 h-10 text-amber-400" />
+                      </div>
+                      <div className="absolute -inset-4 rounded-full border border-amber-500/10 animate-pulse" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-semibold text-amber-400 mb-2">Standby Mode</h2>
+                      <p className="text-sm text-muted-foreground max-w-sm">AIOS is in standby. All AI features are paused.\nClick the power button to wake up.</p>
+                    </div>
+                    <Button
+                      onClick={() => setIsStandby(false)}
+                      className="gap-2 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white"
+                    >
+                      <Power className="w-4 h-4" />
+                      Wake Up
+                    </Button>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div key={activeModule} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2, ease: 'easeOut' }} className="h-full">
+                  <ActiveModuleComponent />
+                </motion.div>
+              )}
             </AnimatePresence>
           </main>
 
           <footer className="h-7 border-t border-border/50 bg-card/20 backdrop-blur-xl flex items-center justify-between px-4 text-[10px] text-muted-foreground">
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1"><span className={'w-1.5 h-1.5 rounded-full ' + (isApiReady ? 'bg-emerald-400' : (isConnected ? 'bg-amber-400' : 'bg-red-400'))} /><span>{isApiReady ? 'Online' : (isConnected ? 'Partial' : 'Offline')}</span></div>
+              <div className="flex items-center gap-1"><span className={'w-1.5 h-1.5 rounded-full ' + (isStandby ? 'bg-amber-400' : (isApiReady ? 'bg-emerald-400' : (isConnected ? 'bg-amber-400' : 'bg-red-400')))} /><span>{isStandby ? 'Standby' : (isApiReady ? 'Online' : (isConnected ? 'Partial' : 'Offline'))}</span></div>
               <span>•</span><span>v1.0.0-alpha</span><span>•</span><span>Autonomy: Supervised</span>
             </div>
             <div className="flex items-center gap-3">

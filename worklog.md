@@ -297,3 +297,41 @@ Stage Summary:
 - **Error messages**: Contextual help for DB, network, and API key errors
 - **install.sh**: Now installs WS mini-service dependencies
 - **Chat works**: Z-AI provider returns responses without any API keys needed
+
+---
+Task ID: 6
+Agent: Main Agent
+Task: Add power ON/OFF toggle + add Grok/Gemini/ChatGPT providers + update .env with all API keys
+
+Work Log:
+- Added Power ON/OFF toggle (standby mode) to sidebar in page.tsx:
+  - Green "Active" button with Power icon when running
+  - Amber "Standby" button with PowerOff icon when in standby
+  - Standby screen with moon icon, animated pulse border, and "Wake Up" button
+  - Footer shows "Standby" status with amber dot
+  - Connection status adapts to standby mode
+- Added xAI Grok provider to providers.ts:
+  - 3 models: Grok 3, Grok 3 Mini, Grok 2
+  - API endpoint: https://api.x.ai/v1/chat/completions
+  - Env key: XAI_API_KEY
+  - Full chat completion implementation
+- Added Google Gemini chat completion (was missing - only provider definition existed before):
+  - Converts messages to Gemini format (role mapping: assistant→model, user→user)
+  - System instruction support via systemInstruction field
+  - Supports gemini-pro, gemini-1.5-flash, gemini-2.0-flash
+  - Returns usage metadata (promptTokenCount, candidatesTokenCount, totalTokenCount)
+- Updated MODEL_PROVIDER_MAP with all model IDs for proper routing
+- Added Grok and Gemini error handling in chat API route
+- Updated ChatModule AVAILABLE_MODELS with 18 models across 7 providers:
+  - Z-AI (Built-in), Mistral (4), OpenAI/ChatGPT (3), Anthropic/Claude (2), Google Gemini (3), xAI Grok (3), DeepSeek (2)
+- Updated .env with all provider API keys (empty, ready to fill):
+  - MISTRAL_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, XAI_API_KEY, DEEPSEEK_API_KEY
+  - Each key has a comment with the URL to get the key
+- Updated getConfiguredKeysStatus to include XAI_API_KEY
+
+Stage Summary:
+- **Power toggle**: ON/OFF standby mode in sidebar with visual feedback
+- **New providers**: xAI Grok (3 models) + Google Gemini chat completion (3 models)
+- **Total models**: 18 models across 7 providers (Z-AI, Mistral, OpenAI, Anthropic, Google, xAI Grok, DeepSeek)
+- **.env**: All API key slots ready with helpful URLs
+- **Chat works**: Z-AI returns responses without any API keys needed

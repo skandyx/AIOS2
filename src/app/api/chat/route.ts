@@ -133,6 +133,18 @@ export async function POST(request: NextRequest) {
           { status: 502 }
         )
       }
+      if (errMsg.includes('XAI_API_KEY')) {
+        return NextResponse.json(
+          { error: 'xAI Grok API key not configured. Add XAI_API_KEY to your .env file, or switch to Z-AI provider.', provider: 'grok' },
+          { status: 502 }
+        )
+      }
+      if (errMsg.includes('GOOGLE_API_KEY')) {
+        return NextResponse.json(
+          { error: 'Google Gemini API key not configured. Add GOOGLE_API_KEY to your .env file, or switch to Z-AI provider.', provider: 'google' },
+          { status: 502 }
+        )
+      }
       if (errMsg.includes('Ollama')) {
         return NextResponse.json(
           { error: 'Ollama is not running. Start it with: ollama serve. Or switch to Z-AI provider.', provider: 'ollama' },

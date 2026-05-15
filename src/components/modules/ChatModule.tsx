@@ -97,14 +97,29 @@ const SYSTEM_PROMPTS = [
 
 const AVAILABLE_MODELS = [
   { id: '', name: 'Z-AI (Default)', provider: 'Built-in', emoji: '✨', color: '#06b6d4' },
+  // Mistral
   { id: 'mistral-large-latest', name: 'Mistral Large', provider: 'Mistral', emoji: '🌊', color: '#06b6d4' },
   { id: 'mistral-small-latest', name: 'Mistral Small', provider: 'Mistral', emoji: '💧', color: '#06b6d4' },
   { id: 'open-mistral-nemo', name: 'Mistral Nemo', provider: 'Mistral', emoji: '🔹', color: '#06b6d4' },
   { id: 'codestral-latest', name: 'Codestral', provider: 'Mistral', emoji: '💻', color: '#06b6d4' },
+  // OpenAI (ChatGPT)
   { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'OpenAI', emoji: '🧠', color: '#10b981' },
   { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI', emoji: '⚡', color: '#10b981' },
+  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'OpenAI', emoji: '🤖', color: '#10b981' },
+  // Anthropic (Claude)
   { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'Anthropic', emoji: '🎭', color: '#f59e0b' },
+  { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', provider: 'Anthropic', emoji: '🪶', color: '#f59e0b' },
+  // Google Gemini
+  { id: 'gemini-pro', name: 'Gemini Pro', provider: 'Google', emoji: '💎', color: '#4285f4' },
+  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'Google', emoji: '⚡', color: '#4285f4' },
+  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'Google', emoji: '🚀', color: '#4285f4' },
+  // xAI Grok
+  { id: 'grok-3', name: 'Grok 3', provider: 'xAI', emoji: '🔥', color: '#ef4444' },
+  { id: 'grok-3-mini', name: 'Grok 3 Mini', provider: 'xAI', emoji: '☄️', color: '#ef4444' },
+  { id: 'grok-2', name: 'Grok 2', provider: 'xAI', emoji: '🪐', color: '#ef4444' },
+  // DeepSeek
   { id: 'deepseek-chat', name: 'DeepSeek V3', provider: 'DeepSeek', emoji: '🔍', color: '#ec4899' },
+  { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', provider: 'DeepSeek', emoji: '🧩', color: '#ec4899' },
 ]
 
 // ─── CodeBlock Component ──────────────────────────────────────────────────────
