@@ -415,3 +415,12 @@
   background: rgba(6, 182, 212, 0.3);
   color: inherit;
 }
+
+/* Hide Next.js dev indicator */
+[next-route-announcer] ~ svg,
+svg[class*="web-inspector-hide-shortcut"],
+button[aria-label="Open Next.js Dev Tools"],
+[data-nextjs-dialog-overlay],
+[data-nextjs-toast] {
+  display: none !important;
+}
