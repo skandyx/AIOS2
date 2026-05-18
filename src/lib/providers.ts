@@ -5,17 +5,16 @@
  * based on the selected model. Supports:
  * - z-ai-web-dev-sdk (default/built-in)
  * - Mistral AI
- * - OpenAI (ChatGPT)
- * - Anthropic (Claude)
+ * - OpenAI
+ * - Anthropic
  * - Google Gemini
- * - xAI Grok
  * - DeepSeek
  * - Local Ollama
  */
 
 // ─── Provider Types ────────────────────────────────────────────────────────
 
-export type ProviderId = 'zai' | 'mistral' | 'openai' | 'anthropic' | 'google' | 'deepseek' | 'ollama' | 'grok'
+export type ProviderId = 'zai' | 'mistral' | 'openai' | 'anthropic' | 'google' | 'deepseek' | 'ollama'
 
 export interface ProviderConfig {
   id: ProviderId
@@ -63,33 +62,65 @@ export interface ChatCompletionResponse {
 // ─── Model-to-Provider Mapping ─────────────────────────────────────────────
 
 const MODEL_PROVIDER_MAP: Record<string, ProviderId> = {
+  // Z-AI built-in models
   'gpt4-turbo': 'zai',
   'gpt4o': 'zai',
   'claude-3.5-sonnet': 'zai',
   'claude-3-opus': 'zai',
+  // Mistral AI models (with and without -latest suffix)
+  'mistral-large': 'mistral',
   'mistral-large-latest': 'mistral',
+  'mistral-medium': 'mistral',
   'mistral-medium-latest': 'mistral',
+  'mistral-small': 'mistral',
   'mistral-small-latest': 'mistral',
   'open-mistral-nemo': 'mistral',
+  'codestral': 'mistral',
   'codestral-latest': 'mistral',
+  'mistral-tiny': 'mistral',
+  'mistral-tiny-latest': 'mistral',
+  'magistral-small-latest': 'mistral',
+  'magistral-medium-latest': 'mistral',
+  'devstral-latest': 'mistral',
+  'devstral-medium-latest': 'mistral',
+  // OpenAI models
   'gpt-4-turbo': 'openai',
   'gpt-4o': 'openai',
   'gpt-4o-mini': 'openai',
+  // Anthropic models
   'claude-3-5-sonnet-20241022': 'anthropic',
   'claude-3-opus-20240229': 'anthropic',
   'claude-3-haiku-20240307': 'anthropic',
+  // Google Gemini models
   'gemini-pro': 'google',
   'gemini-1.5-flash': 'google',
-  'gemini-2.0-flash': 'google',
-  'grok-3': 'grok',
-  'grok-3-mini': 'grok',
-  'grok-2': 'grok',
+  // DeepSeek models
   'deepseek-chat': 'deepseek',
+  'deepseek-v3': 'deepseek',
   'deepseek-coder': 'deepseek',
   'deepseek-reasoner': 'deepseek',
-  'llama3.1': 'ollama',
+  // Ollama/Pi models
+  'llama-3.1': 'ollama',
   'codellama': 'ollama',
+  'ollama-mistral': 'ollama',
+  'ollama-llama3.1': 'ollama',
+  'ollama-codellama': 'ollama',
 }
+
+// Prefixes that identify a provider for model IDs not in the map
+const MODEL_PREFIX_MAP: [string, ProviderId][] = [
+  ['mistral-', 'mistral'],
+  ['magistral-', 'mistral'],
+  ['codestral-', 'mistral'],
+  ['devstral-', 'mistral'],
+  ['open-mistral-', 'mistral'],
+  ['open-codestral-', 'mistral'],
+  ['gpt-', 'openai'],
+  ['claude-', 'anthropic'],
+  ['gemini-', 'google'],
+  ['deepseek-', 'deepseek'],
+  ['ollama-', 'ollama'],
+]
 
 // ─── Provider Definitions ──────────────────────────────────────────────────
 
@@ -169,26 +200,18 @@ export function getProviders(): ProviderConfig[] {
       isAvailable: !!process.env.DEEPSEEK_API_KEY,
     },
     {
-      id: 'grok',
-      name: 'xAI Grok',
-      envKey: 'XAI_API_KEY',
-      baseUrl: 'https://api.x.ai/v1',
-      models: [
-        { id: 'grok-3', name: 'Grok 3', providerId: 'grok', providerName: 'xAI', capabilities: ['chat', 'code', 'reasoning'], contextWindow: '131K', maxTokens: 8192 },
-        { id: 'grok-3-mini', name: 'Grok 3 Mini', providerId: 'grok', providerName: 'xAI', capabilities: ['chat', 'code', 'reasoning'], contextWindow: '131K', maxTokens: 8192 },
-        { id: 'grok-2', name: 'Grok 2', providerId: 'grok', providerName: 'xAI', capabilities: ['chat', 'code'], contextWindow: '131K', maxTokens: 4096 },
-      ],
-      isAvailable: !!process.env.XAI_API_KEY,
-    },
-    {
       id: 'ollama',
-      name: 'Ollama (Local)',
+      name: 'Ollama (Local/Pi)',
       envKey: 'OLLAMA_BASE_URL',
       baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
       models: [
         { id: 'llama3.1', name: 'Llama 3.1', providerId: 'ollama', providerName: 'Ollama', capabilities: ['chat', 'code', 'reasoning'], contextWindow: '128K', maxTokens: 4096 },
         { id: 'codellama', name: 'CodeLlama', providerId: 'ollama', providerName: 'Ollama', capabilities: ['code'], contextWindow: '16K', maxTokens: 4096 },
         { id: 'mistral', name: 'Mistral 7B', providerId: 'ollama', providerName: 'Ollama', capabilities: ['chat', 'code'], contextWindow: '32K', maxTokens: 4096 },
+        // Prefixed IDs for ChatModule selector routing
+        { id: 'ollama-mistral', name: 'Mistral 7B (Ollama)', providerId: 'ollama', providerName: 'Ollama', capabilities: ['chat', 'code'], contextWindow: '32K', maxTokens: 4096 },
+        { id: 'ollama-llama3.1', name: 'Llama 3.1 (Ollama)', providerId: 'ollama', providerName: 'Ollama', capabilities: ['chat', 'code', 'reasoning'], contextWindow: '128K', maxTokens: 4096 },
+        { id: 'ollama-codellama', name: 'CodeLlama (Ollama)', providerId: 'ollama', providerName: 'Ollama', capabilities: ['code'], contextWindow: '16K', maxTokens: 4096 },
       ],
       isAvailable: false, // Will be checked at runtime
     },
@@ -213,7 +236,18 @@ export function getProviderStatus(): Record<string, { available: boolean; keyCon
 // ─── Resolve Provider for a Model ──────────────────────────────────────────
 
 export function resolveProvider(modelId: string): ProviderId {
-  return MODEL_PROVIDER_MAP[modelId] || 'zai'
+  // 1. Exact match in the map
+  if (MODEL_PROVIDER_MAP[modelId]) {
+    return MODEL_PROVIDER_MAP[modelId]
+  }
+  // 2. Prefix match (e.g. "mistral-large-latest" matches "mistral-" prefix)
+  for (const [prefix, provider] of MODEL_PREFIX_MAP) {
+    if (modelId.startsWith(prefix)) {
+      return provider
+    }
+  }
+  // 3. Default to Z-AI built-in
+  return 'zai'
 }
 
 // ─── Chat Completion via Mistral API ───────────────────────────────────────
@@ -378,13 +412,17 @@ async function deepseekChatCompletion(req: ChatCompletionRequest): Promise<ChatC
 async function ollamaChatCompletion(req: ChatCompletionRequest): Promise<ChatCompletionResponse> {
   const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
 
+  // Strip the 'ollama-' prefix from model name when sending to Ollama API
+  // e.g. 'ollama-mistral' -> 'mistral', 'ollama-llama3.1' -> 'llama3.1'
+  const ollamaModel = (req.model || 'llama3.1').replace(/^ollama-/, '')
+
   const response = await fetch(`${baseUrl}/api/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: req.model || 'llama3.1',
+      model: ollamaModel,
       messages: req.messages,
       stream: false,
       options: {
@@ -402,139 +440,75 @@ async function ollamaChatCompletion(req: ChatCompletionRequest): Promise<ChatCom
   const data = await response.json()
   return {
     content: data.message?.content || '',
-    model: data.model || req.model || 'llama3.1',
+    model: data.model || ollamaModel,
     provider: 'ollama',
-  }
-}
-
-// ─── Chat Completion via xAI Grok API ──────────────────────────────────────
-
-async function grokChatCompletion(req: ChatCompletionRequest): Promise<ChatCompletionResponse> {
-  const apiKey = process.env.XAI_API_KEY
-  if (!apiKey) throw new Error('XAI_API_KEY is not configured')
-
-  const response = await fetch('https://api.x.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: req.model || 'grok-3',
-      messages: req.messages,
-      temperature: req.temperature ?? 0.7,
-      max_tokens: req.maxTokens ?? 4096,
-    }),
-  })
-
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`xAI Grok API error: ${response.status} - ${error}`)
-  }
-
-  const data = await response.json()
-  return {
-    content: data.choices[0]?.message?.content || '',
-    model: data.model || req.model || 'grok-3',
-    provider: 'grok',
-    usage: data.usage ? {
-      promptTokens: data.usage.prompt_tokens,
-      completionTokens: data.usage.completion_tokens,
-      totalTokens: data.usage.total_tokens,
-    } : undefined,
-  }
-}
-
-// ─── Chat Completion via Google Gemini API ──────────────────────────────────
-
-async function googleChatCompletion(req: ChatCompletionRequest): Promise<ChatCompletionResponse> {
-  const apiKey = process.env.GOOGLE_API_KEY
-  if (!apiKey) throw new Error('GOOGLE_API_KEY is not configured')
-
-  const model = req.model || 'gemini-pro'
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-
-  // Convert messages to Gemini format
-  const contents = req.messages
-    .filter(m => m.role !== 'system')
-    .map(m => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    }))
-
-  const systemInstruction = req.messages.find(m => m.role === 'system')
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents,
-      ...(systemInstruction ? { systemInstruction: { parts: [{ text: systemInstruction.content }] } } : {}),
-      generationConfig: {
-        temperature: req.temperature ?? 0.7,
-        maxOutputTokens: req.maxTokens ?? 4096,
-      },
-    }),
-  })
-
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Google Gemini API error: ${response.status} - ${error}`)
-  }
-
-  const data = await response.json()
-  return {
-    content: data.candidates?.[0]?.content?.parts?.[0]?.text || '',
-    model,
-    provider: 'google',
-    usage: data.usageMetadata ? {
-      promptTokens: data.usageMetadata.promptTokenCount,
-      completionTokens: data.usageMetadata.candidatesTokenCount,
-      totalTokens: data.usageMetadata.totalTokenCount,
-    } : undefined,
   }
 }
 
 // ─── Chat Completion via z-ai-web-dev-sdk (Default) ────────────────────────
 
 async function zaiChatCompletion(req: ChatCompletionRequest): Promise<ChatCompletionResponse> {
-  try {
-    const ZAI = (await import('z-ai-web-dev-sdk')).default
-    const zai = await ZAI.create()
+  const MAX_RETRIES = 4
+  const RETRY_DELAYS = [2000, 4000, 8000, 12000] // Exponential backoff
 
-    // Z-AI SDK uses 'assistant' role for system prompts, not 'system'
-    const zaiMessages = req.messages.map(m => ({
-      role: m.role === 'system' ? 'assistant' as const : m.role as 'user' | 'assistant',
-      content: m.content,
-    }))
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const ZAI = (await import('z-ai-web-dev-sdk')).default
+      const zai = await ZAI.create()
 
-    const completion = await zai.chat.completions.create({
-      messages: zaiMessages,
-      model: req.model || undefined,
-      thinking: { type: 'disabled' },
-    })
+      // Z-AI SDK uses 'assistant' role for system prompts, not 'system'
+      // Also filter out 'tool' role which is not supported by Z-AI SDK
+      const zaiMessages = req.messages
+        .filter(m => m.role !== 'tool')
+        .map(m => ({
+          role: (m.role === 'system' ? 'assistant' : m.role) as 'user' | 'assistant',
+          content: m.content,
+        }))
 
-    const content = completion.choices[0]?.message?.content || ''
-    if (!content) {
-      throw new Error('Z-AI returned an empty response. The built-in AI may be temporarily unavailable.')
-    }
+      const completion = await zai.chat.completions.create({
+        messages: zaiMessages,
+        model: req.model || undefined,
+        thinking: { type: 'disabled' },
+      })
 
-    return {
-      content,
-      model: completion.model || req.model || 'zai-default',
-      provider: 'zai',
+      const content = completion.choices[0]?.message?.content || ''
+      if (!content) {
+        throw new Error('Z-AI returned an empty response. The built-in AI may be temporarily unavailable.')
+      }
+
+      return {
+        content,
+        model: completion.model || req.model || 'zai-default',
+        provider: 'zai',
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+
+      // Retry on "pending state" errors (function still initializing)
+      if (
+        attempt < MAX_RETRIES &&
+        (errMsg.includes('pending state') || errMsg.includes('PreconditionFailed') || errMsg.includes('please try later'))
+      ) {
+        console.log(`Z-AI function pending, retrying in ${RETRY_DELAYS[attempt]}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`)
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt]))
+        continue
+      }
+
+      if (errMsg.includes('ENOTFOUND') || errMsg.includes('ECONNREFUSED') || errMsg.includes('fetch failed')) {
+        throw new Error('Z-AI (built-in) could not connect to the server. Check your internet connection.')
+      }
+      if (errMsg.includes('API key') || errMsg.includes('api_key') || errMsg.includes('unauthorized') || errMsg.includes('401')) {
+        throw new Error('Z-AI authentication failed. Try adding an external provider API key in .env.')
+      }
+      if (errMsg.includes('pending state') || errMsg.includes('PreconditionFailed')) {
+        throw new Error('AI service is still starting up. Please wait a moment and try again.')
+      }
+      throw new Error(`Z-AI error: ${errMsg}`)
     }
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    // Re-throw with a helpful message
-    if (errMsg.includes('ENOTFOUND') || errMsg.includes('ECONNREFUSED') || errMsg.includes('fetch failed')) {
-      throw new Error('Z-AI (built-in) could not connect to the server. Check your internet connection. You can also configure an external provider (Mistral, OpenAI, etc.) in the .env file.')
-    }
-    if (errMsg.includes('API key') || errMsg.includes('api_key') || errMsg.includes('unauthorized') || errMsg.includes('401')) {
-      throw new Error('Z-AI authentication failed. The built-in provider may need configuration. Try adding an external provider API key in .env.')
-    }
-    throw new Error(`Z-AI error: ${errMsg}`)
   }
+
+  // Should not reach here, but just in case
+  throw new Error('Z-AI service is unavailable after multiple retries. Please try again later.')
 }
 
 // ─── Main Chat Completion Router ───────────────────────────────────────────
@@ -549,10 +523,6 @@ export async function chatCompletion(req: ChatCompletionRequest): Promise<ChatCo
       return openaiChatCompletion(req)
     case 'anthropic':
       return anthropicChatCompletion(req)
-    case 'google':
-      return googleChatCompletion(req)
-    case 'grok':
-      return grokChatCompletion(req)
     case 'deepseek':
       return deepseekChatCompletion(req)
     case 'ollama':
@@ -589,10 +559,6 @@ export function getConfiguredKeysStatus(): Record<string, { configured: boolean;
     GOOGLE_API_KEY: {
       configured: !!process.env.GOOGLE_API_KEY,
       masked: process.env.GOOGLE_API_KEY ? maskApiKey(process.env.GOOGLE_API_KEY) : '',
-    },
-    XAI_API_KEY: {
-      configured: !!process.env.XAI_API_KEY,
-      masked: process.env.XAI_API_KEY ? maskApiKey(process.env.XAI_API_KEY) : '',
     },
     DEEPSEEK_API_KEY: {
       configured: !!process.env.DEEPSEEK_API_KEY,

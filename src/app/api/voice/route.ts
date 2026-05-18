@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { audioBase64, language } = body
+    const { audioBase64 } = body
 
     if (!audioBase64 || typeof audioBase64 !== 'string') {
       return NextResponse.json(
@@ -24,8 +24,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ text: response.text })
   } catch (error) {
     console.error('Voice transcription error:', error)
+    const errMsg = error instanceof Error ? error.message : 'Failed to transcribe audio'
     return NextResponse.json(
-      { error: 'Failed to transcribe audio' },
+      { error: errMsg },
       { status: 500 }
     )
   }

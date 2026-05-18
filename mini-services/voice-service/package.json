@@ -1,0 +1,7 @@
+{
+  "name": "aios-voice-service",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "python3 server.py"
+  }
+}

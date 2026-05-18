@@ -198,7 +198,7 @@ function RegistryCard({
                 <span className="truncate">{server.name}</span>
               </CardTitle>
               <CardDescription className="line-clamp-1 text-xs">
-                {server.fullName || server.author || 'Community'}
+                {server.fullName || 'Community'}
               </CardDescription>
             </div>
           </div>

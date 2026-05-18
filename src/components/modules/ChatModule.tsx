@@ -20,7 +20,6 @@ import {
   Bot,
   User,
   Cpu,
-  AlertCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -41,21 +40,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useAIOSStore } from '@/lib/store'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,29 +85,22 @@ const SYSTEM_PROMPTS = [
 
 const AVAILABLE_MODELS = [
   { id: '', name: 'Z-AI (Default)', provider: 'Built-in', emoji: '✨', color: '#06b6d4' },
-  // Mistral
+  // ── Mistral Cloud ──
   { id: 'mistral-large-latest', name: 'Mistral Large', provider: 'Mistral', emoji: '🌊', color: '#06b6d4' },
   { id: 'mistral-small-latest', name: 'Mistral Small', provider: 'Mistral', emoji: '💧', color: '#06b6d4' },
   { id: 'open-mistral-nemo', name: 'Mistral Nemo', provider: 'Mistral', emoji: '🔹', color: '#06b6d4' },
   { id: 'codestral-latest', name: 'Codestral', provider: 'Mistral', emoji: '💻', color: '#06b6d4' },
-  // OpenAI (ChatGPT)
+  // ── OpenAI ──
   { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'OpenAI', emoji: '🧠', color: '#10b981' },
   { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI', emoji: '⚡', color: '#10b981' },
-  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'OpenAI', emoji: '🤖', color: '#10b981' },
-  // Anthropic (Claude)
+  // ── Anthropic ──
   { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'Anthropic', emoji: '🎭', color: '#f59e0b' },
-  { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', provider: 'Anthropic', emoji: '🪶', color: '#f59e0b' },
-  // Google Gemini
-  { id: 'gemini-pro', name: 'Gemini Pro', provider: 'Google', emoji: '💎', color: '#4285f4' },
-  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'Google', emoji: '⚡', color: '#4285f4' },
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'Google', emoji: '🚀', color: '#4285f4' },
-  // xAI Grok
-  { id: 'grok-3', name: 'Grok 3', provider: 'xAI', emoji: '🔥', color: '#ef4444' },
-  { id: 'grok-3-mini', name: 'Grok 3 Mini', provider: 'xAI', emoji: '☄️', color: '#ef4444' },
-  { id: 'grok-2', name: 'Grok 2', provider: 'xAI', emoji: '🪐', color: '#ef4444' },
-  // DeepSeek
+  // ── DeepSeek ──
   { id: 'deepseek-chat', name: 'DeepSeek V3', provider: 'DeepSeek', emoji: '🔍', color: '#ec4899' },
-  { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', provider: 'DeepSeek', emoji: '🧩', color: '#ec4899' },
+  // ── Ollama (Local / Pi) ──
+  { id: 'ollama-mistral', name: 'Mistral 7B (Ollama)', provider: 'Ollama', emoji: '🖥️', color: '#06b6d4' },
+  { id: 'ollama-llama3.1', name: 'Llama 3.1 (Ollama)', provider: 'Ollama', emoji: '🖥️', color: '#06b6d4' },
+  { id: 'ollama-codellama', name: 'CodeLlama (Ollama)', provider: 'Ollama', emoji: '🖥️', color: '#06b6d4' },
 ]
 
 // ─── CodeBlock Component ──────────────────────────────────────────────────────
@@ -297,13 +278,13 @@ function ConversationList({
   conversations,
   selectedId,
   onSelect,
-  onDeleteRequest,
+  onDelete,
   onNew,
 }: {
   conversations: Conversation[]
   selectedId: string | null
   onSelect: (id: string) => void
-  onDeleteRequest: (id: string) => void
+  onDelete: (id: string) => void
   onNew: () => void
 }) {
   return (
@@ -350,10 +331,10 @@ function ConversationList({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400"
                   onClick={(e) => {
                     e.stopPropagation()
-                    onDeleteRequest(conv.id)
+                    onDelete(conv.id)
                   }}
                 >
                   <Trash2 className="h-3 w-3" />
@@ -376,14 +357,12 @@ export default function ChatModule() {
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isSending, setIsSending] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [systemPrompt, setSystemPrompt] = useState('You are a helpful AI assistant.')
   const [customPrompt, setCustomPrompt] = useState('')
   const [selectedPromptPreset, setSelectedPromptPreset] = useState('Default Assistant')
   const [error, setError] = useState<string | null>(null)
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const { selectedModel, setSelectedModel } = useAIOSStore()
+  const [selectedModel, setSelectedModel] = useState('')
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -462,11 +441,11 @@ export default function ChatModule() {
     setMessages((prev) => [...prev, optimisticUserMsg])
     setInputValue('')
 
-    // Timeout controller - abort after 60 seconds
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 60000)
-
     try {
+      // Timeout controller - abort after 60 seconds
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 60000)
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -480,14 +459,8 @@ export default function ChatModule() {
       })
 
       if (!res.ok) {
-        let errorMsg = 'Failed to send message'
-        try {
-          const errData = await res.json()
-          errorMsg = errData.error || errorMsg
-        } catch {
-          // response body not JSON
-        }
-        throw new Error(errorMsg)
+        const errData = await res.json().catch(() => ({ error: 'Failed to send message' }))
+        throw new Error(errData.error || 'Failed to send message')
       }
 
       const data: ChatResponse = await res.json()
@@ -503,24 +476,18 @@ export default function ChatModule() {
         setSelectedConversationId(data.conversationId)
         fetchConversations()
       }
+
+      clearTimeout(timeoutId)
     } catch (err) {
-      console.error('Failed to process chat message', err)
+      console.error('Send error:', err)
       let errMsg = err instanceof Error ? err.message : 'Failed to send message'
-      // Handle timeout
       if (err instanceof DOMException && err.name === 'AbortError') {
-        errMsg = 'Request timed out — the AI is taking too long to respond. Try again or switch models.'
-      } else if (errMsg.includes('Database not initialized') || errMsg.includes('Check DATABASE_URL')) {
-        errMsg = 'Database not ready. Please restart the app or run: bunx prisma db push'
-      } else if (errMsg.includes('fetch failed') || errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError')) {
-        errMsg = 'Cannot reach the server. Make sure the app is running (bun run dev).'
-      } else if (errMsg.includes('API key not configured') || errMsg.includes('MISTRAL_API_KEY') || errMsg.includes('OPENAI_API_KEY') || errMsg.includes('ANTHROPIC_API_KEY') || errMsg.includes('DEEPSEEK_API_KEY')) {
-        errMsg = errMsg + ' Switch to the built-in Z-AI model (no API key needed) in the model selector above.'
+        errMsg = 'Request timed out — the AI is taking too long. Try again or switch models.'
       }
       setError(errMsg)
       // Remove optimistic message on error
       setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsg.id))
     } finally {
-      clearTimeout(timeoutId)
       setIsSending(false)
       inputRef.current?.focus()
     }
@@ -539,20 +506,14 @@ export default function ChatModule() {
   // ── Delete conversation ───────────────────────────────────────────────────
 
   const handleDeleteConversation = async (id: string) => {
-    setIsDeleting(true)
     try {
-      const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete')
+      await fetch(`/api/conversations/${id}`, { method: 'DELETE' })
       if (selectedConversationId === id) {
         handleNewConversation()
       }
       fetchConversations()
     } catch (err) {
       console.error('Delete error:', err)
-      setError('Failed to delete conversation. Please try again.')
-    } finally {
-      setIsDeleting(false)
-      setDeleteConfirmId(null)
     }
   }
 
@@ -582,25 +543,42 @@ export default function ChatModule() {
   }
 
   return (
-    <div className="flex h-full w-full bg-gray-950/80 rounded-xl overflow-hidden border border-white/5">
-      {/* ── Sidebar ── */}
+    <div className="flex h-full w-full bg-gray-950/80 rounded-xl overflow-hidden border border-white/5 relative">
+      {/* ── Sidebar (desktop: slide, mobile: overlay) ── */}
       <AnimatePresence mode="wait">
         {sidebarOpen && (
-          <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 280, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="flex-shrink-0 border-r border-white/5 bg-gray-950/60 overflow-hidden"
-          >
-            <ConversationList
-              conversations={conversations}
-              selectedId={selectedConversationId}
-              onSelect={setSelectedConversationId}
-              onDeleteRequest={setDeleteConfirmId}
-              onNew={handleNewConversation}
+          <>
+            {/* Mobile backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-30 md:hidden"
+              onClick={() => setSidebarOpen(false)}
             />
-          </motion.div>
+            <motion.div
+              initial={{ width: 0, opacity: 0, x: -280 }}
+              animate={{ width: 280, opacity: 1, x: 0 }}
+              exit={{ width: 0, opacity: 0, x: -280 }}
+              transition={{ duration: 0.2 }}
+              className="absolute md:relative left-0 top-0 bottom-0 z-40 md:z-auto flex-shrink-0 border-r border-white/5 bg-gray-950/90 md:bg-gray-950/60 backdrop-blur-xl overflow-hidden"
+            >
+              <ConversationList
+                conversations={conversations}
+                selectedId={selectedConversationId}
+                onSelect={(id) => {
+                  setSelectedConversationId(id)
+                  // Auto-close on mobile after selection
+                  if (window.innerWidth < 768) setSidebarOpen(false)
+                }}
+                onDelete={handleDeleteConversation}
+                onNew={() => {
+                  handleNewConversation()
+                  if (window.innerWidth < 768) setSidebarOpen(false)
+                }}
+              />
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 
@@ -635,7 +613,7 @@ export default function ChatModule() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             {/* System prompt selector */}
             <Dialog>
               <DialogTrigger asChild>
@@ -691,42 +669,23 @@ export default function ChatModule() {
               </DialogContent>
             </Dialog>
 
-            {/* Model Selector */}
+            {/* Model Selector - responsive: visible on all screen sizes */}
             <div className="flex items-center gap-1.5">
-              <Cpu className="size-3.5 text-neutral-500" />
+              <Cpu className="size-3.5 text-neutral-500 hidden sm:block" />
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
-                className="bg-gray-900 border border-white/10 text-[11px] text-neutral-300 rounded-md px-2 py-1 h-7 outline-none cursor-pointer hover:border-cyan-500/30 focus:border-cyan-500/50 transition-colors"
+                className="bg-gray-900 border border-white/10 text-[11px] text-neutral-300 rounded-md px-2 py-1 h-7 outline-none cursor-pointer hover:border-cyan-500/30 focus:border-cyan-500/50 transition-colors max-w-[140px] sm:max-w-none"
               >
                 {AVAILABLE_MODELS.map(m => (
                   <option key={m.id} value={m.id}>
-                    {m.emoji} {m.name} {m.provider !== 'Built-in' ? `(${m.provider})` : ''}
+                    {m.emoji} {m.name}{m.provider !== 'Built-in' ? ` (${m.provider})` : ''}
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Delete current conversation */}
-            {selectedConversationId && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                      onClick={() => setDeleteConfirmId(selectedConversationId)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Delete conversation</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-
-            <Badge variant="outline" className="text-[10px] border-cyan-500/30 text-cyan-400 bg-cyan-500/10">
+            <Badge variant="outline" className="text-[10px] border-cyan-500/30 text-cyan-400 bg-cyan-500/10 hidden sm:inline-flex">
               AI OS
             </Badge>
           </div>
@@ -774,31 +733,8 @@ export default function ChatModule() {
               className="px-4 py-2"
             >
               <Card className="bg-red-500/10 border-red-500/30">
-                <CardContent className="py-3 px-4 space-y-2">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-red-300">{error}</p>
-                  </div>
-                  {(error.includes('Database') || error.includes('DATABASE_URL') || error.includes('prisma')) && (
-                    <p className="text-xs text-red-400/70 ml-6">
-                      Run in terminal: <code className="bg-red-500/10 px-1.5 py-0.5 rounded text-red-300">bunx prisma generate && bunx prisma db push</code>
-                    </p>
-                  )}
-                  {(error.includes('API key') || error.includes('not configured')) && (
-                    <p className="text-xs text-red-400/70 ml-6">
-                      Edit <code className="bg-red-500/10 px-1.5 py-0.5 rounded text-red-300">.env</code> to add your key, or switch to <strong>Z-AI</strong> (built-in, no key needed).
-                    </p>
-                  )}
-                  {(error.includes('Cannot reach') || error.includes('fetch failed') || error.includes('NetworkError')) && (
-                    <p className="text-xs text-red-400/70 ml-6">
-                      Make sure the app server is running. Try: <code className="bg-red-500/10 px-1.5 py-0.5 rounded text-red-300">bun run dev</code>
-                    </p>
-                  )}
-                  {error.includes('Z-AI') && (
-                    <p className="text-xs text-red-400/70 ml-6">
-                      The built-in AI may be temporarily unavailable. Try adding a provider API key in <code className="bg-red-500/10 px-1.5 py-0.5 rounded text-red-300">.env</code>.
-                    </p>
-                  )}
+                <CardContent className="py-2 px-3">
+                  <p className="text-xs text-red-400">{error}</p>
                 </CardContent>
               </Card>
             </motion.div>
@@ -839,45 +775,6 @@ export default function ChatModule() {
           </div>
         </div>
       </div>
-
-      {/* ── Delete Confirmation Dialog ── */}
-      <AlertDialog open={deleteConfirmId !== null} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null) }}>
-        <AlertDialogContent className="bg-gray-900 border-white/10 text-gray-100">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-red-400 flex items-center gap-2">
-              <Trash2 className="h-5 w-5" />
-              Delete Conversation
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
-              Are you sure you want to delete this conversation? This action cannot be undone. All messages in this conversation will be permanently removed.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 border-white/10 text-gray-300 hover:bg-gray-700 hover:text-gray-100">
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (deleteConfirmId) handleDeleteConversation(deleteConfirmId)
-              }}
-              disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700 text-white border-0 disabled:opacity-50"
-            >
-              {isDeleting ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Deleting...
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <Trash2 className="h-4 w-4" />
-                  Delete
-                </span>
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }
