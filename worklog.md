@@ -236,3 +236,42 @@ Stage Summary:
 - Fixed critical routing bug: Mistral models now properly route to Mistral provider instead of falling back to Z-AI
 - Added smart model resolution with prefix matching for future model IDs
 - Kali Linux compatible: all dependencies are standard Linux packages
+---
+Task ID: 10
+Agent: Main
+Task: Fix install.sh for Kali Linux support + update README
+
+Work Log:
+- Identified critical bug in install.sh: OS detection only accepted `debian` and `ubuntu` — Kali Linux ($ID=kali) would fail with "Unsupported OS" error and exit
+- Rewrote install.sh (now 10 steps instead of 8):
+  - Step 1: Expanded OS detection to support: Debian, Ubuntu, Kali Linux, Parrot OS, Linux Mint, Pop!_OS, Zorin, Arch, Manjaro, EndeavourOS, Garuda, Fedora
+  - Added ID_LIKE fallback: if $ID is unknown but ID_LIKE contains "debian"/"arch"/"fedora", it still works
+  - OS_FAMILY variable (debian/arch/redhat) drives package manager selection
+  - Step 2: Multi-family package installation (apt/pacman/dnf)
+  - Step 3: Bun installation (unchanged)
+  - Step 4: Node.js installation (new step — was missing before)
+  - Step 5: Python3 + edge-tts installation (new step — was missing)
+    - Installs pip3 if missing
+    - Installs edge-tts with multiple fallback methods (pip3 install, --break-system-packages, --user, python3 -m pip)
+    - Lists available Jarvis voices
+  - Steps 6-10: Same as before (clone, bun install, .env, prisma, start)
+  - Updated .env template to match current project format with Mistral key field
+  - Mistral API key check in .env
+  - Updated success banner with voice/AI provider info
+- Updated README.md with:
+  - New badges (edge-tts, Python)
+  - Kali Linux support mentioned throughout
+  - New "Voice & Jarvis" section with architecture diagram, wake word explanation, edge-tts details, voice table
+  - New "Supported OS" table with 13+ distributions
+  - Updated API reference with voice/assistant endpoint
+  - Updated project structure with VoiceModule, audio-utils, mini-services
+  - Updated AI Providers with Mistral models (Magistral, Devstral, etc.)
+  - Model routing explanation (3-step resolution)
+  - Raspberry Pi deployment section
+  - Voice best practices section
+
+Stage Summary:
+- install.sh now works on Kali Linux, Parrot OS, Arch, Fedora, and all Debian derivatives
+- No more OS detection blocking — Kali is explicitly supported
+- edge-tts and Python dependencies are installed automatically
+- README updated with comprehensive documentation on all new features
