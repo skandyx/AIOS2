@@ -14,51 +14,49 @@ function log(msg) {
 function startServer() {
   restartCount++;
   log(`Starting Next.js dev server (attempt #${restartCount})...`);
-  
-  childProcess = spawn('bun', ['run', 'dev'], {
+
+  // Use node directly instead of bun — more stable for long-running processes
+  childProcess = spawn('node', ['node_modules/.bin/next', 'dev', '-p', '3000'], {
     cwd: '/home/z/my-project',
-    env: { ...process.env },
+    env: {
+      ...process.env,
+      NODE_OPTIONS: '--max-old-space-size=768',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  
-  let lastData = '';
-  
+
   childProcess.stdout.on('data', (data) => {
     const str = data.toString();
     try { fs.appendFileSync(LOG_PATH, str); } catch(e) {}
-    lastData = str;
   });
-  
+
   childProcess.stderr.on('data', (data) => {
     const str = data.toString();
     try { fs.appendFileSync(LOG_PATH, str); } catch(e) {}
   });
-  
+
   childProcess.on('exit', (code, signal) => {
     log(`Server exited (code=${code}, signal=${signal})`);
     childProcess = null;
-    if (restartCount < 200) {
-      const delay = Math.min(2000 + restartCount * 500, 10000);
+    if (restartCount < 500) {
+      const delay = Math.min(3000 + restartCount * 200, 15000);
       log(`Restarting in ${delay/1000}s... (attempt ${restartCount})`);
       setTimeout(startServer, delay);
     }
   });
-  
+
   childProcess.on('error', (err) => {
     log(`Server spawn error: ${err.message}`);
     childProcess = null;
-    if (restartCount < 200) {
+    if (restartCount < 500) {
       setTimeout(startServer, 3000);
     }
   });
 }
 
-// Clear old log
-try { fs.writeFileSync(LOG_PATH, ''); } catch(e) {}
-
 startServer();
 
-// Health check - restart if port not listening for 30s
+// Health check — restart if port not listening for 60s
 let lastSeenAlive = Date.now();
 setInterval(() => {
   const { execSync } = require('child_process');
@@ -66,16 +64,16 @@ setInterval(() => {
     const result = execSync('ss -tlnp 2>/dev/null | grep ":3000 " || true').toString().trim();
     if (result) {
       lastSeenAlive = Date.now();
-    } else if (Date.now() - lastSeenAlive > 30000) {
-      log('Health check: Port 3000 not listening for 30s, killing server...');
+    } else if (Date.now() - lastSeenAlive > 60000) {
+      log('Health check: Port 3000 not listening for 60s, killing server...');
       if (childProcess) {
         try { childProcess.kill('SIGKILL'); } catch(e) {}
         childProcess = null;
       }
-      lastSeenAlive = Date.now(); // Reset to avoid rapid kills
+      lastSeenAlive = Date.now();
     }
   } catch (e) {}
-}, 5000);
+}, 10000);
 
 // Graceful shutdown
 process.on('SIGTERM', () => { log('PM SIGTERM'); if (childProcess) childProcess.kill(); process.exit(0); });
