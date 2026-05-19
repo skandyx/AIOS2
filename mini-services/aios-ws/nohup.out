@@ -52,3 +52,6 @@ AI OS WebSocket server running on port 3003
 [connection] Client connected: yMTCyiSzHQUn1iryAAAr (total: 1)
 [connection] Client connected: lmD2oSuVpfqQ7xuyAAAt (total: 2)
 [disconnect] Client disconnected: yMTCyiSzHQUn1iryAAAr reason=transport close (total: 1)
+Health check available at http://localhost:3004/health
+AI OS WebSocket server running on port 3003
+[connection] Client connected: JUNLsu0pTxqDfs3wAAAB (total: 1)

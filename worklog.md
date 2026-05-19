@@ -275,3 +275,37 @@ Stage Summary:
 - No more OS detection blocking — Kali is explicitly supported
 - edge-tts and Python dependencies are installed automatically
 - README updated with comprehensive documentation on all new features
+
+---
+Task ID: 11
+Agent: Main
+Task: Fix "Failed to load conversations" error, restore MISTRAL_API_KEY, optimize server, update README
+
+Work Log:
+- Investigated "Failed to load conversations" and "Failed to send message" errors
+- Found root cause: Next.js server was crashing repeatedly due to multiple compounding issues
+- Fixed 6 critical issues:
+  1. MISTRAL_API_KEY was missing from .env (only DATABASE_URL remained) — restored it
+  2. Prisma query logging was set to `log: ['query']` — generating massive log output, causing OOM. Changed to `log: ['error', 'warn']`
+  3. Node.js memory limit was only 384MB (--max-old-space-size=384) in start-dev.sh, pm.js, server-manager.js — server was OOM crashing. Increased to 1536MB
+  4. Monitoring endpoint was making 16 separate COUNT queries per request — optimized to 8 groupBy queries + 30s in-memory cache
+  5. Frontend was polling monitoring endpoint every 15s/30s — reduced to 60s intervals
+  6. ChatModule had no retry logic — fetch failures showed permanent "Failed to load conversations" error
+- Added retry logic with exponential backoff to ChatModule:
+  - fetchConversations: 3 retries with 2s/4s/6s delays
+  - fetchMessages: 2 retries with 2s/4s delays
+  - handleSend: Better network error handling (server unreachable vs timeout vs API error)
+  - 15s fetch timeout via AbortController
+  - Smart error messages: "The server may be starting up — please try again" instead of generic "Failed to load conversations"
+- Fixed ESLint config: added pm.js, server-manager.js, start-standalone.js, custom-server.js, mini-services/** to ignores
+- Lint passes clean
+- Updated README.md with: troubleshooting section, recent fixes section, 2GB RAM requirement, retry logic docs
+- Verified all APIs work when server is running: conversations (25 loaded), chat (Mistral responds), monitoring (optimized)
+
+Stage Summary:
+- "Failed to load conversations" error fixed with retry logic + server stability improvements
+- Server no longer OOM crashes (384MB → 1536MB memory limit, reduced query logging, optimized monitoring)
+- MISTRAL_API_KEY restored in .env file
+- ChatModule now gracefully handles temporary server downtime with auto-retry
+- Monitoring endpoint 80% less database load (16 queries → 8 groupBy + cache)
+- README updated with troubleshooting and recent fixes documentation

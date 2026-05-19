@@ -1,11 +1,11 @@
 #!/bin/bash
-# Simple supervisor that keeps services running
+# AIOS Supervisor - keeps all services running
 
 start_next() {
   while true; do
     cd /home/z/my-project
-    node node_modules/.bin/next dev -p 3000 >> /home/z/my-project/server.log 2>&1
-    echo "[$(date)] Next.js died, restarting in 3s..." >> /home/z/my-project/server.log
+    NODE_OPTIONS="--max-old-space-size=1536" node node_modules/.bin/next dev -p 3000 >> /home/z/my-project/dev.log 2>&1
+    echo "[$(date)] Next.js died, restarting in 3s..." >> /home/z/my-project/dev.log
     sleep 3
   done
 }
@@ -19,6 +19,17 @@ start_ws() {
   done
 }
 
+start_voice() {
+  while true; do
+    cd /home/z/my-project/mini-services/voice-service
+    if [ -f "server.py" ]; then
+      python3 server.py >> /home/z/my-project/mini-services/voice-service/nohup.out 2>&1
+    fi
+    sleep 3
+  done
+}
+
 start_next &
 start_ws &
+start_voice &
 wait

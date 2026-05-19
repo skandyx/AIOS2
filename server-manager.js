@@ -6,7 +6,7 @@ function startServer() {
   
   const child = spawn('node', ['node_modules/.bin/next', 'dev', '-p', '3000'], {
     cwd: '/home/z/my-project',
-    env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=384' },
+    env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=1536' },
     stdio: 'inherit'
   });
   

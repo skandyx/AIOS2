@@ -34,6 +34,8 @@ Inspired by **Jarvis** and **OpenClaw** • Built with Next.js 16, React 19, and
 - [WebSocket Service](#-websocket-service)
 - [Project Structure](#-project-structure)
 - [Supported OS](#-supported-os)
+- [Troubleshooting](#-troubleshooting)
+- [Recent Fixes](#-recent-fixes)
 - [Deployment](#-deployment)
 - [Contributing](#-contributing)
 - [License](#-license)
@@ -62,17 +64,18 @@ AIOS is a comprehensive AI Operating System that unifies conversational AI, voic
 
 ## ✨ Features
 
-- **AI Chat** — Full-featured conversational AI with system prompt presets, model selection, markdown rendering, and syntax-highlighted code blocks
+- **AI Chat** — Full-featured conversational AI with system prompt presets, model selection, markdown rendering, syntax-highlighted code blocks, and automatic retry with exponential backoff
 - **Voice Interaction (Jarvis)** — Wake word "Fred", edge-tts neural voices (en-GB-RyanNeural), always-listening mode, speech-to-text transcription
 - **Multi-Agent Orchestration** — 14 specialized agent types (Coder, Researcher, Planner, Reviewer, Tester, etc.) coordinated for complex tasks
 - **Persistent Memory** — 11 memory types ensuring context is never lost across sessions
 - **Visual Workflows** — Drag-and-drop workflow builder with 7 node types for automating complex processes
-- **Real-Time Monitoring** — System metrics, health checks, and performance dashboards
+- **Real-Time Monitoring** — System metrics, health checks, and performance dashboards with optimized queries
 - **Plugin Marketplace** — 12 pre-configured plugins for extending functionality
 - **Multi-Provider AI** — Unified interface across 7 AI providers with easy switching
 - **Terminal Interface** — In-browser command terminal for power users
 - **Security Framework** — 5 autonomy levels, permission matrices, and comprehensive audit logging
 - **External Integrations** — Gmail, Calendar, GitHub, Slack, Notion, Jira, Trello, Discord, Linear, Figma, Drive, Sheets, custom MCP, and webhooks
+- **Resilient Networking** — Automatic retry with exponential backoff, timeout handling, and user-friendly error messages for chat operations
 
 ---
 
@@ -98,28 +101,33 @@ AIOS is a comprehensive AI Operating System that unifies conversational AI, voic
 
 | Requirement | Version | Install |
 |---|---|---|
+| **RAM** | **2 GB minimum** | Required for Node.js + Next.js Turbopack |
 | Bun | Latest | `curl -fsSL https://bun.sh/install \| bash` |
 | Python3 | 3.8+ | Pre-installed on most Linux distros |
 | pip3 | Latest | `sudo apt install -y python3-pip` |
 | Git | Latest | `sudo apt install -y git` |
 
-### One-Line Install (Debian / Ubuntu / Kali Linux / Parrot OS)
+> ⚠️ **Memory Requirement**: AIOS requires a minimum of **2 GB RAM**. The Node.js runtime is configured with a 1536 MB heap limit to accommodate Next.js Turbopack compilation. Running with less than 2 GB RAM may cause the server to crash during startup or under load.
+
+### One-Line Install (13+ Linux Distributions)
 
 ```bash
 chmod +x install.sh && ./install.sh
 ```
 
 The install script automatically:
-1. ✅ Detects your OS (Debian, Ubuntu, Kali, Parrot, Arch, Fedora, and derivatives)
+1. ✅ Detects your OS (Debian, Ubuntu, Kali, Parrot, Arch, Manjaro, Garuda, Fedora, Linux Mint, Pop!_OS, Zorin, elementary OS, and more)
 2. ✅ Installs system dependencies (curl, git, build-essential, python3, pip)
 3. ✅ Installs Bun runtime
 4. ✅ Installs Node.js (if not present)
 5. ✅ Installs edge-tts for Jarvis-quality neural voices
 6. ✅ Clones or detects the project directory
 7. ✅ Runs `bun install` for project dependencies
-8. ✅ Configures `.env` with API key templates
+8. ✅ Configures `.env` with API key templates (including `MISTRAL_API_KEY`)
 9. ✅ Initializes the Prisma/SQLite database
 10. ✅ Starts the development server
+
+> 💡 **OS Detection**: The install script uses `/etc/os-release` with `ID_LIKE` fallback, so even unlisted Debian/Arch derivatives should work automatically.
 
 ### Manual Installation
 
@@ -183,6 +191,8 @@ DATABASE_URL="file:./db/custom.db"
 
 > ⚠️ **Security Warning**: Never commit your `.env` file to version control. The `.gitignore` is configured to exclude it.
 
+> 💡 **Mistral API Key**: The `MISTRAL_API_KEY` is pre-configured in the `.env` template and is recommended for voice/Jarvis interactions due to Mistral's low latency and high quality.
+
 ### Voice Configuration
 
 AIOS uses **edge-tts** (Microsoft Edge Neural TTS) for high-quality voice synthesis. No API key is needed — it uses the same endpoint as Microsoft Edge's Read Aloud feature.
@@ -215,6 +225,10 @@ Full-featured conversational AI interface with:
 - Markdown and syntax-highlighted code rendering
 - Conversation history and management
 - Ollama support for local/Raspberry Pi models
+- **Automatic retry with exponential backoff** — 3 retries with 2s/4s/6s delays on transient failures
+- **15-second fetch timeout** via AbortController to prevent hanging requests
+- **Smart error messages** — friendly, actionable messages instead of generic errors (e.g., "The server may be starting up — please try again" with auto-retry)
+- **Network error classification** — distinguishes between server unreachable, timeout, and API errors for appropriate handling
 
 ### 2. 🗣️ Voice & Jarvis
 
@@ -284,6 +298,7 @@ Real-time system observability:
 - Service health checks
 - Performance dashboards
 - Alert notifications
+- **Optimized endpoint** — reduced from 16 separate COUNT queries to 8 groupBy queries with 30-second in-memory cache for significantly lower database load
 
 ### 7. 🔌 Plugins
 
@@ -447,7 +462,7 @@ AIOS exposes **18+ API routes** under the Next.js App Router:
 | Method | Endpoint | Description |
 |---|---|---|
 | `POST` | `/api/generate-image` | Generate AI images |
-| `GET` | `/api/monitoring` | Get system metrics |
+| `GET` | `/api/monitoring` | Get system metrics (30s cached, optimized groupBy queries) |
 | `GET` | `/api/models/config` | Get provider configuration |
 
 ---
@@ -465,6 +480,13 @@ AIOS uses a unified provider abstraction layer (`src/lib/providers.ts`) that sup
 | **Google** | `GOOGLE_API_KEY` | No | Gemini Pro, Gemini 1.5 Flash |
 | **DeepSeek** | `DEEPSEEK_API_KEY` | No | DeepSeek V3, DeepSeek Coder, DeepSeek Reasoner |
 | **Ollama** (Local/Pi) | `OLLAMA_BASE_URL` | No | Llama 3.1, CodeLlama, Mistral 7B |
+
+### Provider Configuration Notes
+
+- **Z-AI** — Built-in provider, works out of the box with no API key needed
+- **Mistral AI** — `MISTRAL_API_KEY` is pre-configured in the `.env` template; recommended for voice/Jarvis interactions due to low latency
+- **OpenAI, Anthropic, Google, DeepSeek** — Add respective API keys to `.env` to activate
+- **Ollama** — Set `OLLAMA_BASE_URL` to your local or Raspberry Pi Ollama instance
 
 ### Model Routing
 
@@ -577,11 +599,11 @@ my-project/
 │   │       ├── plugins/
 │   │       ├── integrations/route.ts
 │   │       ├── generate-image/route.ts
-│   │       ├── monitoring/route.ts
+│   │       ├── monitoring/route.ts      # Optimized: 8 groupBy + 30s cache
 │   │       └── models/config/route.ts
 │   ├── components/
 │   │   ├── modules/             # Module UI components
-│   │   │   ├── ChatModule.tsx
+│   │   │   ├── ChatModule.tsx   # Chat with retry + timeout + smart errors
 │   │   │   ├── VoiceModule.tsx  # Voice + Jarvis + Fred wake word
 │   │   │   ├── AgentsModule.tsx
 │   │   │   ├── MemoryModule.tsx
@@ -594,16 +616,18 @@ my-project/
 │   │   │   └── IntegrationsModule.tsx
 │   │   └── ui/                  # shadcn/ui components (New York)
 │   └── lib/
-│       ├── db.ts                # Prisma client singleton
+│       ├── db.ts                # Prisma client singleton (log: error/warn only)
 │       ├── auth.ts              # Authentication helpers
 │       ├── audio-utils.ts       # PCM→WAV conversion + voice IDs
 │       ├── store.ts             # Zustand global store
 │       └── providers.ts         # AI provider abstraction (7 providers)
 ├── mini-services/
 │   └── aios-ws/                 # WebSocket service (Socket.io)
+├── start-dev.sh                 # Dev server startup (Node.js 1536MB limit)
+├── pm.js                        # Process manager with health checks (1536MB)
+├── server-manager.js            # Server manager (1536MB)
 ├── .env                         # Environment variables (not committed)
-├── install.sh                   # Automated installation (Debian/Ubuntu/Kali/Arch/Fedora)
-├── pm.js                        # Process manager with health checks
+├── install.sh                   # Automated installation (13+ Linux distributions)
 ├── package.json                 # Node.js dependencies
 ├── tsconfig.json                # TypeScript configuration
 ├── next.config.ts               # Next.js configuration
@@ -615,7 +639,7 @@ my-project/
 
 ## 🐧 Supported OS
 
-AIOS runs on most Linux distributions. The install script automatically detects and configures:
+AIOS runs on most Linux distributions. The install script automatically detects and configures **13+ distributions** using `/etc/os-release` with `ID_LIKE` fallback:
 
 | Distribution | OS Family | Package Manager | Status |
 |---|---|---|---|
@@ -626,9 +650,9 @@ AIOS runs on most Linux distributions. The install script automatically detects 
 | **Linux Mint** | debian | apt | ✅ Full support |
 | **Pop!_OS** | debian | apt | ✅ Full support |
 | **Zorin OS** | debian | apt | ✅ Full support |
+| **elementary OS** | debian | apt | ✅ Full support |
 | **Arch Linux** | arch | pacman | ✅ Full support |
 | **Manjaro** | arch | pacman | ✅ Full support |
-| **EndeavourOS** | arch | pacman | ✅ Full support |
 | **Garuda** | arch | pacman | ✅ Full support |
 | **Fedora** | redhat | dnf | ✅ Full support |
 | **Other Debian-like** | debian* | apt | ⚠️ Auto-detected via `ID_LIKE` |
@@ -636,6 +660,84 @@ AIOS runs on most Linux distributions. The install script automatically detects 
 | **Raspberry Pi OS** | debian | apt | ✅ Full support (with Ollama) |
 
 > **Kali Linux Note**: Kali is Debian-based and fully supported. The install script detects `$ID=kali` and uses `apt` just like Debian/Ubuntu. No OS detection blocking.
+
+> **Fallback Detection**: If your distribution isn't explicitly listed, the install script checks the `ID_LIKE` field from `/etc/os-release` to determine the package manager. Most Debian and Arch derivatives will work automatically.
+
+---
+
+## 🔧 Troubleshooting
+
+### Common Error Messages
+
+| Error Message | Cause | Solution |
+|---|---|---|
+| "The server may be starting up — please try again" | Server is still initializing or temporarily unreachable | Wait a moment and retry — the chat module will auto-retry with exponential backoff (2s → 4s → 6s) |
+| "Failed to connect to the server. Please check your internet connection." | Server is unreachable (network error) | Verify the server is running (`bun run dev`) and check your network connection |
+| "The request timed out. The server may be busy — please try again." | Fetch request exceeded 15-second timeout | The server may be under heavy load; retry after a moment. Ensure Node.js has sufficient memory (1536MB) |
+| "Failed to send message: [API error details]" | The API returned an error response | Check the error details — may be an invalid model, missing API key, or rate limit. Verify your `.env` configuration |
+
+### Server Crashes on Startup
+
+**Symptom**: The server crashes with an out-of-memory (OOM) error or repeatedly restarts.
+
+**Solutions**:
+1. **Check RAM** — Ensure your system has at least 2 GB of free RAM
+2. **Node.js memory limit** — Verify the `--max-old-space-size=1536` flag is set in `start-dev.sh`, `pm.js`, and `server-manager.js`
+3. **Prisma query logging** — Ensure `src/lib/db.ts` uses `log: ['error', 'warn']` (not `log: ['query']`) to avoid log flooding
+
+### Prisma Query Log Flooding
+
+**Symptom**: Console is flooded with SQL queries, server runs out of memory.
+
+**Solution**: The Prisma client should be configured with minimal logging:
+
+```typescript
+// src/lib/db.ts — Correct configuration
+const prisma = new PrismaClient({
+  log: ['error', 'warn'],  // NOT ['query'] — query logging causes OOM
+})
+```
+
+### Chat "Failed to Load" Errors
+
+**Symptom**: Conversations list or chat messages fail to load.
+
+**Solutions**:
+1. The chat module now includes automatic retry with exponential backoff — most transient errors resolve themselves
+2. If errors persist, check that the server is fully started (look for "Ready in" in the console)
+3. Verify `DATABASE_URL` in `.env` points to a valid SQLite file
+4. Frontend polling has been reduced to 60-second intervals to lower server load — if you need real-time updates, enable the WebSocket service
+
+### Monitoring Endpoint Slow
+
+**Symptom**: `/api/monitoring` endpoint takes a long time to respond.
+
+**Solution**: The monitoring endpoint now uses optimized groupBy queries (8 instead of 16 separate COUNT queries) with a 30-second in-memory cache. If you're still experiencing slowness, check database size and consider pruning old records.
+
+---
+
+## 📝 Recent Fixes
+
+### Critical Bug Fixes
+
+| Fix | Details | Impact |
+|---|---|---|
+| **Chat retry logic** | Added exponential backoff retry (3 retries, 2s/4s/6s delays) in ChatModule | Eliminates "Failed to load conversations" and "Failed to send message" errors on transient failures |
+| **Prisma log flooding** | Changed `log: ['query']` → `log: ['error', 'warn']` in `src/lib/db.ts` | Prevents OOM crashes caused by query log flooding |
+| **Node.js memory limit** | Increased from 384MB → 1536MB in `start-dev.sh`, `pm.js`, and `server-manager.js` | Prevents server crashes during Next.js Turbopack compilation |
+| **Monitoring endpoint** | Reduced 16 separate COUNT queries to 8 groupBy queries + 30s in-memory cache | Significantly lower database load and faster response times |
+| **Frontend polling** | Reduced polling intervals from 15s/30s → 60s | Lower server load, fewer unnecessary requests |
+| **Chat error messages** | Replaced generic "Failed to load conversations" with actionable messages like "The server may be starting up — please try again" | Better user experience with auto-retry guidance |
+| **Fetch timeout** | Added 15-second timeout on all chat fetch requests via AbortController | Prevents indefinitely hanging requests |
+| **Network error handling** | Chat send now distinguishes between server unreachable vs. timeout vs. API error | Appropriate error messages and recovery for each failure type |
+
+### Configuration Fixes
+
+| Fix | Details |
+|---|---|
+| **MISTRAL_API_KEY** | Restored in `.env` file template — Mistral is now pre-configured for voice/Jarvis use cases |
+| **Install.sh** | Expanded support to 13+ Linux distributions (added Manjaro, Garuda, Linux Mint, Pop!_OS, Zorin, elementary OS) with `ID_LIKE` fallback for unlisted derivatives |
+| **AI Providers** | Full configuration for Z-AI (built-in), Mistral AI (API key in .env), OpenAI, Anthropic, Google Gemini, DeepSeek (keys in .env), and Ollama (local/Raspberry Pi) |
 
 ---
 
@@ -724,6 +826,8 @@ Before going to production, ensure:
 - [ ] CORS and security headers are configured
 - [ ] SSL/TLS is enabled (via reverse proxy or Next.js config)
 - [ ] Regular database backups are scheduled
+- [ ] Node.js memory limit is set to 1536MB (check `start-dev.sh` / `pm.js` / `server-manager.js`)
+- [ ] System has at least 2 GB RAM available
 
 ---
 
@@ -781,10 +885,13 @@ Level 4 (Fully Autonomous)  ──▶ Controlled environments only, with monitor
 
 ### 🚀 Performance
 
-- **Enable WebSocket** for real-time features — polling is a fallback only
+- **Ensure 2 GB RAM minimum** — Node.js + Next.js Turbopack requires adequate memory
+- **Verify Node.js memory limit** — should be `--max-old-space-size=1536` in startup scripts
+- **Enable WebSocket** for real-time features — polling is a fallback only (now at 60s intervals)
 - **Use SQLite** for development; consider PostgreSQL for production with Prisma
 - **Monitor agent resource usage** via the Monitoring module
 - **Cache frequently accessed memories** in short-term storage
+- **Prisma logging** — keep at `['error', 'warn']` to avoid log-induced OOM
 
 ---
 

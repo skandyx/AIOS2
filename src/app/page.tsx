@@ -171,7 +171,7 @@ export default function AIOSDashboard() {
       }
     };
     checkHealth();
-    const interval = setInterval(checkHealth, 15000);
+    const interval = setInterval(checkHealth, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -235,7 +235,7 @@ export default function AIOSDashboard() {
       }
     };
     fetchMetrics();
-    const interval = setInterval(fetchMetrics, 30000);
+    const interval = setInterval(fetchMetrics, 60000);
     return () => clearInterval(interval);
   }, []);
 

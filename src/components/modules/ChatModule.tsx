@@ -369,16 +369,33 @@ export default function ChatModule() {
 
   // ── Fetch conversations on mount ──────────────────────────────────────────
 
-  const fetchConversations = useCallback(async () => {
+  const fetchConversations = useCallback(async (retryCount = 0) => {
     setIsLoading(true)
+    setError(null)
     try {
-      const res = await fetch('/api/conversations')
-      if (!res.ok) throw new Error('Failed to fetch conversations')
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 15000)
+      const res = await fetch('/api/conversations', { signal: controller.signal })
+      clearTimeout(timeoutId)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: 'Server error' }))
+        throw new Error(errData.error || `Server returned ${res.status}`)
+      }
       const data = await res.json()
       setConversations(data)
     } catch (err) {
       console.error('Fetch conversations error:', err)
-      setError('Failed to load conversations')
+      // Auto-retry up to 3 times with backoff
+      if (retryCount < 3) {
+        const delay = (retryCount + 1) * 2000
+        console.log(`Retrying fetch conversations in ${delay}ms (attempt ${retryCount + 1}/3)...`)
+        await new Promise(r => setTimeout(r, delay))
+        return fetchConversations(retryCount + 1)
+      }
+      const errMsg = err instanceof DOMException && err.name === 'AbortError'
+        ? 'Server is taking too long to respond. It may be compiling — please wait a moment and refresh.'
+        : 'Unable to load conversations. The server may be starting up — please try again in a few seconds.'
+      setError(errMsg)
     } finally {
       setIsLoading(false)
     }
@@ -390,10 +407,13 @@ export default function ChatModule() {
 
   // ── Fetch messages when conversation selected ─────────────────────────────
 
-  const fetchMessages = useCallback(async (id: string) => {
+  const fetchMessages = useCallback(async (id: string, retryCount = 0) => {
     setIsLoading(true)
     try {
-      const res = await fetch(`/api/conversations/${id}`)
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 15000)
+      const res = await fetch(`/api/conversations/${id}`, { signal: controller.signal })
+      clearTimeout(timeoutId)
       if (!res.ok) throw new Error('Failed to fetch messages')
       const data = await res.json()
       setMessages(data.messages || [])
@@ -402,7 +422,11 @@ export default function ChatModule() {
       }
     } catch (err) {
       console.error('Fetch messages error:', err)
-      setError('Failed to load messages')
+      if (retryCount < 2) {
+        await new Promise(r => setTimeout(r, (retryCount + 1) * 2000))
+        return fetchMessages(id, retryCount + 1)
+      }
+      setError('Unable to load messages. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -446,20 +470,29 @@ export default function ChatModule() {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 60000)
 
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: trimmed,
-          conversationId: selectedConversationId,
-          systemPrompt,
-          model: selectedModel || undefined,
-        }),
-        signal: controller.signal,
-      })
+      let res: Response
+      try {
+        res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: trimmed,
+            conversationId: selectedConversationId,
+            systemPrompt,
+            model: selectedModel || undefined,
+          }),
+          signal: controller.signal,
+        })
+      } catch (fetchErr) {
+        // Network error (server unreachable or not yet compiled)
+        if (fetchErr instanceof DOMException && fetchErr.name === 'AbortError') {
+          throw new Error('Request timed out — the AI is taking too long. Try again or switch models.')
+        }
+        throw new Error('Unable to reach the server. It may be starting up — please try again in a few seconds.')
+      }
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: 'Failed to send message' }))
+        const errData = await res.json().catch(() => ({ error: `Server error (${res.status})` }))
         throw new Error(errData.error || 'Failed to send message')
       }
 

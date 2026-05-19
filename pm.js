@@ -20,7 +20,7 @@ function startServer() {
     cwd: '/home/z/my-project',
     env: {
       ...process.env,
-      NODE_OPTIONS: '--max-old-space-size=768',
+      NODE_OPTIONS: '--max-old-space-size=1536',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
