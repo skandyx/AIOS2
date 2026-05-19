@@ -386,7 +386,28 @@ if grep -q "^MISTRAL_API_KEY=.$" .env 2>/dev/null; then
 else
     warn "Mistral API key is not set in .env"
     warn "You can get one at: https://console.mistral.ai/"
-    warn "The built-in Z-AI provider works without any API key."
+    warn "Mistral is the default AI provider — it's recommended to add your key."
+fi
+
+# ── Z-AI Configuration ──
+# The Z-AI SDK requires a .z-ai-config file for the built-in provider.
+# If not present, AIOS automatically falls back to Mistral (if key is set).
+ZAICONFIG_PATHS=("${PROJECT_DIR}/.z-ai-config" "$HOME/.z-ai-config" "/etc/.z-ai-config")
+ZAICONFIG_FOUND=false
+for cfgpath in "${ZAICONFIG_PATHS[@]}"; do
+    if [[ -f "$cfgpath" ]]; then
+        success "Z-AI configuration found at ${cfgpath}"
+        ZAICONFIG_FOUND=true
+        break
+    fi
+done
+
+if [[ "$ZAICONFIG_FOUND" == "false" ]]; then
+    info "Z-AI config (.z-ai-config) not found — Z-AI built-in provider will be unavailable."
+    info "AIOS will use Mistral AI as the default provider (requires MISTRAL_API_KEY in .env)."
+    info ""
+    info "To enable Z-AI later, create ${PROJECT_DIR}/z-ai-config with:"
+    info '  {"baseUrl": "https://your-zai-server/v1", "apiKey": "your-key"}'
 fi
 
 # ============================================================

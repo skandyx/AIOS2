@@ -84,9 +84,8 @@ const SYSTEM_PROMPTS = [
 // ─── Available Models ──────────────────────────────────────────────────────────
 
 const AVAILABLE_MODELS = [
-  { id: '', name: 'Z-AI (Default)', provider: 'Built-in', emoji: '✨', color: '#06b6d4' },
+  { id: 'mistral-large-latest', name: 'Mistral Large ★', provider: 'Mistral', emoji: '🌊', color: '#06b6d4' },
   // ── Mistral Cloud ──
-  { id: 'mistral-large-latest', name: 'Mistral Large', provider: 'Mistral', emoji: '🌊', color: '#06b6d4' },
   { id: 'mistral-small-latest', name: 'Mistral Small', provider: 'Mistral', emoji: '💧', color: '#06b6d4' },
   { id: 'open-mistral-nemo', name: 'Mistral Nemo', provider: 'Mistral', emoji: '🔹', color: '#06b6d4' },
   { id: 'codestral-latest', name: 'Codestral', provider: 'Mistral', emoji: '💻', color: '#06b6d4' },
@@ -362,7 +361,7 @@ export default function ChatModule() {
   const [customPrompt, setCustomPrompt] = useState('')
   const [selectedPromptPreset, setSelectedPromptPreset] = useState('Default Assistant')
   const [error, setError] = useState<string | null>(null)
-  const [selectedModel, setSelectedModel] = useState('')
+  const [selectedModel, setSelectedModel] = useState('mistral-large-latest')
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)

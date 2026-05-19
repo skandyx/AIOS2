@@ -122,13 +122,59 @@ const MODEL_PREFIX_MAP: [string, ProviderId][] = [
   ['ollama-', 'ollama'],
 ]
 
+// ─── Z-AI Config Detection ──────────────────────────────────────────────────
+
+import fs from 'fs'
+import path from 'path'
+import os from 'os'
+
+/**
+ * Check if Z-AI SDK configuration file exists and is valid.
+ * The SDK searches for .z-ai-config in: project dir, home dir, /etc
+ */
+function isZaiConfigured(): boolean {
+  const configPaths = [
+    path.join(process.cwd(), '.z-ai-config'),
+    path.join(os.homedir(), '.z-ai-config'),
+    '/etc/.z-ai-config',
+  ]
+  for (const filePath of configPaths) {
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8')
+      const config = JSON.parse(content)
+      if (config.baseUrl && config.apiKey) {
+        return true
+      }
+    } catch {
+      // File doesn't exist or is invalid — continue
+    }
+  }
+  return false
+}
+
+// Cache the result (config won't change at runtime)
+const ZAI_AVAILABLE = isZaiConfigured()
+
+/**
+ * Find the best available fallback provider when Z-AI is not configured.
+ * Priority: Mistral (if key set) > OpenAI > Anthropic > Google > DeepSeek > Ollama
+ */
+function getBestAvailableProvider(): ProviderId {
+  if (process.env.MISTRAL_API_KEY) return 'mistral'
+  if (process.env.OPENAI_API_KEY) return 'openai'
+  if (process.env.ANTHROPIC_API_KEY) return 'anthropic'
+  if (process.env.GOOGLE_API_KEY) return 'google'
+  if (process.env.DEEPSEEK_API_KEY) return 'deepseek'
+  return 'ollama'
+}
+
 // ─── Provider Definitions ──────────────────────────────────────────────────
 
 export function getProviders(): ProviderConfig[] {
   return [
     {
       id: 'zai',
-      name: 'Z-AI (Built-in)',
+      name: ZAI_AVAILABLE ? 'Z-AI (Built-in)' : 'Z-AI (Not Configured)',
       envKey: '',
       models: [
         { id: 'gpt4-turbo', name: 'GPT-4 Turbo', providerId: 'zai', providerName: 'Z-AI', capabilities: ['chat', 'code', 'reasoning', 'vision'], contextWindow: '128K', maxTokens: 4096 },
@@ -136,7 +182,7 @@ export function getProviders(): ProviderConfig[] {
         { id: 'claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', providerId: 'zai', providerName: 'Z-AI', capabilities: ['chat', 'code', 'reasoning'], contextWindow: '200K', maxTokens: 4096 },
         { id: 'claude-3-opus', name: 'Claude 3 Opus', providerId: 'zai', providerName: 'Z-AI', capabilities: ['chat', 'code', 'reasoning'], contextWindow: '200K', maxTokens: 4096 },
       ],
-      isAvailable: true, // Always available - built-in SDK
+      isAvailable: ZAI_AVAILABLE,
     },
     {
       id: 'mistral',
@@ -226,7 +272,7 @@ export function getProviderStatus(): Record<string, { available: boolean; keyCon
   for (const p of providers) {
     status[p.id] = {
       available: p.isAvailable,
-      keyConfigured: p.id === 'zai' ? true : !!process.env[p.envKey],
+      keyConfigured: p.id === 'zai' ? ZAI_AVAILABLE : !!process.env[p.envKey],
       modelCount: p.models.length,
     }
   }
@@ -246,7 +292,11 @@ export function resolveProvider(modelId: string): ProviderId {
       return provider
     }
   }
-  // 3. Default to Z-AI built-in
+  // 3. Default to best available provider
+  // If Z-AI is not configured, fall back to Mistral (or another available provider)
+  if (!ZAI_AVAILABLE) {
+    return getBestAvailableProvider()
+  }
   return 'zai'
 }
 
@@ -514,7 +564,17 @@ async function zaiChatCompletion(req: ChatCompletionRequest): Promise<ChatComple
 // ─── Main Chat Completion Router ───────────────────────────────────────────
 
 export async function chatCompletion(req: ChatCompletionRequest): Promise<ChatCompletionResponse> {
-  const providerId = req.model ? resolveProvider(req.model) : 'zai'
+  let providerId = req.model ? resolveProvider(req.model) : (ZAI_AVAILABLE ? 'zai' : getBestAvailableProvider())
+
+  // If Z-AI is selected but not configured, fall back to best available
+  if (providerId === 'zai' && !ZAI_AVAILABLE) {
+    console.warn('Z-AI not configured (.z-ai-config missing), falling back to', getBestAvailableProvider())
+    providerId = getBestAvailableProvider()
+    // Update the model to match the fallback provider
+    if (!req.model || resolveProvider(req.model) === 'zai') {
+      req = { ...req, model: providerId === 'mistral' ? 'mistral-large-latest' : undefined }
+    }
+  }
 
   switch (providerId) {
     case 'mistral':
