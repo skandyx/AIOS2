@@ -23,11 +23,16 @@ error()   { echo -e "${RED}[ERROR]${NC} $*"; }
 header()  { echo -e "\n${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"; echo -e "${CYAN}${BOLD}  $*${NC}"; echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"; }
 
 # ----- Project Configuration ----- #
-PROJECT_DIR="/home/z/my-project"
-REPO_URL=""  # Set this to your git repo URL, e.g. "https://github.com/your-org/aios.git"
+# Auto-detect the directory where this script lives
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)"
+PROJECT_DIR="${SCRIPT_DIR}"
 DEV_PORT=3000
 WS_PORT=3003
 DB_DIR="${PROJECT_DIR}/db"
+
+# If you want to clone from a remote repo instead, set REPO_URL:
+# REPO_URL="https://github.com/your-org/aios.git"
+REPO_URL=""
 
 # ============================================================
 #  Step 1: OS Check (Debian/Ubuntu/Kali/Parrot/Arch/Fedora)
@@ -285,14 +290,14 @@ info "Available Jarvis voices: en-GB-RyanNeural (default), en-GB-ThomasNeural, e
 # ============================================================
 header "Step 6 / 10 — Setting Up Project Directory"
 
-if [[ -d "${PROJECT_DIR}" && -f "${PROJECT_DIR}/package.json" ]]; then
+if [[ -f "${PROJECT_DIR}/package.json" ]]; then
     success "Existing project detected at ${PROJECT_DIR}."
     cd "${PROJECT_DIR}"
     info "Pulling latest changes (if this is a git repo)..."
     if git rev-parse --is-inside-work-tree &>/dev/null; then
         git pull --ff-only 2>/dev/null && success "Repository updated." || warn "Could not pull latest changes (maybe local modifications?)."
     else
-        warn "Not a git repository — skipping pull."
+        info "Not a git repository — skipping pull."
     fi
 elif [[ -n "$REPO_URL" ]]; then
     info "Cloning repository from ${REPO_URL}..."
@@ -300,11 +305,22 @@ elif [[ -n "$REPO_URL" ]]; then
     cd "${PROJECT_DIR}"
     success "Repository cloned."
 else
-    warn "No existing project and REPO_URL is not set."
-    error "Please either:"
-    error "  1. Clone the repo manually, or"
-    error "  2. Set REPO_URL at the top of this script."
-    exit 1
+    # Script is running from within the project directory itself
+    # (e.g. user downloaded and ran ./install.sh from the project root)
+    if [[ -f "$(pwd)/package.json" ]]; then
+        PROJECT_DIR="$(pwd)"
+        success "Project detected in current directory: ${PROJECT_DIR}"
+        cd "${PROJECT_DIR}"
+    else
+        error "No project found and REPO_URL is not set."
+        error ""
+        error "Solutions:"
+        error "  1. Run this script from inside the AIOS project directory"
+        error "  2. Set REPO_URL at the top of this script, e.g.:"
+        error "     REPO_URL=\"https://github.com/your-org/aios.git\""
+        error "  3. Clone the repo first, then run ./install.sh from within it"
+        exit 1
+    fi
 fi
 
 # ============================================================

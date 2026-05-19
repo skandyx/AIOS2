@@ -225,9 +225,9 @@ Full-featured conversational AI interface with:
 - Markdown and syntax-highlighted code rendering
 - Conversation history and management
 - Ollama support for local/Raspberry Pi models
-- **Automatic retry with exponential backoff** — 3 retries with 2s/4s/6s delays on transient failures
-- **15-second fetch timeout** via AbortController to prevent hanging requests
-- **Smart error messages** — friendly, actionable messages instead of generic errors (e.g., "The server may be starting up — please try again" with auto-retry)
+- **Automatic retry with exponential backoff** — 5 retries with 3s/6s/9s/12s/15s delays on transient failures
+- **30-second fetch timeout** via AbortController to prevent hanging requests (increased from 15s to accommodate server compilation)
+- **Smart error handling** — non-blocking errors that set empty conversations instead of blocking the UI; users can always start a new chat
 - **Network error classification** — distinguishes between server unreachable, timeout, and API errors for appropriate handling
 
 ### 2. 🗣️ Voice & Jarvis
@@ -703,10 +703,12 @@ const prisma = new PrismaClient({
 **Symptom**: Conversations list or chat messages fail to load.
 
 **Solutions**:
-1. The chat module now includes automatic retry with exponential backoff — most transient errors resolve themselves
-2. If errors persist, check that the server is fully started (look for "Ready in" in the console)
-3. Verify `DATABASE_URL` in `.env` points to a valid SQLite file
-4. Frontend polling has been reduced to 60-second intervals to lower server load — if you need real-time updates, enable the WebSocket service
+1. The chat module now includes automatic retry with 5 retries and exponential backoff (3s→15s) — most transient errors resolve themselves
+2. If the server is unreachable, the chat gracefully falls back to empty conversations (no blocking error) — you can always start a new chat
+3. If errors persist, check that the server is fully started (look for "Ready in" in the console)
+4. Verify `DATABASE_URL` in `.env` points to a valid SQLite file
+5. The process manager (`pm.js`) auto-restarts the server if it crashes — ensure it's running (`node pm.js`)
+6. Frontend polling has been reduced to 60-second intervals to lower server load — if you need real-time updates, enable the WebSocket service
 
 ### Monitoring Endpoint Slow
 
@@ -722,13 +724,13 @@ const prisma = new PrismaClient({
 
 | Fix | Details | Impact |
 |---|---|---|
-| **Chat retry logic** | Added exponential backoff retry (3 retries, 2s/4s/6s delays) in ChatModule | Eliminates "Failed to load conversations" and "Failed to send message" errors on transient failures |
+| **Chat retry logic** | Added exponential backoff retry (5 retries, 3s/6s/9s/12s/15s delays) with 30s timeout in ChatModule | Eliminates "Failed to load conversations" and "Failed to send message" errors on transient failures |
 | **Prisma log flooding** | Changed `log: ['query']` → `log: ['error', 'warn']` in `src/lib/db.ts` | Prevents OOM crashes caused by query log flooding |
 | **Node.js memory limit** | Increased from 384MB → 1536MB in `start-dev.sh`, `pm.js`, and `server-manager.js` | Prevents server crashes during Next.js Turbopack compilation |
 | **Monitoring endpoint** | Reduced 16 separate COUNT queries to 8 groupBy queries + 30s in-memory cache | Significantly lower database load and faster response times |
 | **Frontend polling** | Reduced polling intervals from 15s/30s → 60s | Lower server load, fewer unnecessary requests |
-| **Chat error messages** | Replaced generic "Failed to load conversations" with actionable messages like "The server may be starting up — please try again" | Better user experience with auto-retry guidance |
-| **Fetch timeout** | Added 15-second timeout on all chat fetch requests via AbortController | Prevents indefinitely hanging requests |
+| **Chat error handling** | Non-blocking errors — sets empty conversations instead of blocking UI; users can always start a new chat | Better user experience — no more "Failed to load conversations" blocking error |
+| **Fetch timeout** | Increased from 15s to 30s on all chat fetch requests via AbortController | Prevents false timeouts during server compilation |
 | **Network error handling** | Chat send now distinguishes between server unreachable vs. timeout vs. API error | Appropriate error messages and recovery for each failure type |
 
 ### Configuration Fixes
@@ -736,7 +738,7 @@ const prisma = new PrismaClient({
 | Fix | Details |
 |---|---|
 | **MISTRAL_API_KEY** | Restored in `.env` file template — Mistral is now pre-configured for voice/Jarvis use cases |
-| **Install.sh** | Expanded support to 13+ Linux distributions (added Manjaro, Garuda, Linux Mint, Pop!_OS, Zorin, elementary OS) with `ID_LIKE` fallback for unlisted derivatives |
+| **Install.sh** | Expanded support to 13+ Linux distributions with `ID_LIKE` fallback; auto-detects script directory (no more hardcoded paths or REPO_URL required) |
 | **AI Providers** | Full configuration for Z-AI (built-in), Mistral AI (API key in .env), OpenAI, Anthropic, Google Gemini, DeepSeek (keys in .env), and Ollama (local/Raspberry Pi) |
 
 ---

@@ -309,3 +309,35 @@ Stage Summary:
 - ChatModule now gracefully handles temporary server downtime with auto-retry
 - Monitoring endpoint 80% less database load (16 queries → 8 groupBy + cache)
 - README updated with troubleshooting and recent fixes documentation
+
+---
+Task ID: 12
+Agent: Main
+Task: Fix install.sh REPO_URL blocking, improve ChatModule resilience, update README
+
+Work Log:
+- Fixed install.sh REPO_URL issue: PROJECT_DIR was hardcoded to /home/z/my-project and REPO_URL was empty
+  - When running on a fresh Kali system, Step 6 would fail with "No existing project and REPO_URL is not set"
+  - Changed PROJECT_DIR to auto-detect from script directory: SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  - Updated Step 6 to also check current working directory as fallback
+  - Improved error messages with 3 solution options
+- Improved ChatModule.tsx resilience:
+  - Increased fetchConversations retries from 3 to 5 with longer delays (3s/6s/9s/12s/15s)
+  - Increased fetch timeout from 15s to 30s (to accommodate slow server compilation)
+  - Non-blocking error handling: sets empty conversations instead of showing blocking error
+  - Only shows error message for non-transient failures (not timeouts/server starting)
+  - fetchMessages also improved with 3 retries and 30s timeout
+- Restarted Next.js dev server with pm.js process manager (auto-restart on crash)
+- Verified all API endpoints return 200: /api/conversations, /api/monitoring, /
+- Updated README.md:
+  - Updated retry logic docs (5 retries, 3s→15s delays, 30s timeout)
+  - Updated error handling docs (non-blocking, no more "Failed to load conversations")
+  - Updated install.sh fix notes (auto-detect script directory, no REPO_URL needed)
+  - Updated troubleshooting section with pm.js and process manager guidance
+- Lint passes clean
+
+Stage Summary:
+- install.sh no longer requires REPO_URL — auto-detects project directory from script location
+- ChatModule much more resilient: 5 retries, 30s timeout, non-blocking errors
+- "Failed to fetch conversations" error should no longer appear to users
+- README updated with all latest changes

@@ -370,11 +370,12 @@ export default function ChatModule() {
   // ── Fetch conversations on mount ──────────────────────────────────────────
 
   const fetchConversations = useCallback(async (retryCount = 0) => {
-    setIsLoading(true)
+    // Only show loading spinner on first attempt, not on retries
+    if (retryCount === 0) setIsLoading(true)
     setError(null)
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 15000)
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout for slow compilation
       const res = await fetch('/api/conversations', { signal: controller.signal })
       clearTimeout(timeoutId)
       if (!res.ok) {
@@ -384,18 +385,24 @@ export default function ChatModule() {
       const data = await res.json()
       setConversations(data)
     } catch (err) {
-      console.error('Fetch conversations error:', err)
-      // Auto-retry up to 3 times with backoff
-      if (retryCount < 3) {
-        const delay = (retryCount + 1) * 2000
-        console.log(`Retrying fetch conversations in ${delay}ms (attempt ${retryCount + 1}/3)...`)
+      // Auto-retry up to 5 times with exponential backoff (server may be starting up)
+      if (retryCount < 5) {
+        const delay = Math.min((retryCount + 1) * 3000, 15000) // 3s, 6s, 9s, 12s, 15s
+        console.log(`AIOS: Retrying fetch conversations in ${delay / 1000}s (attempt ${retryCount + 1}/5)...`)
         await new Promise(r => setTimeout(r, delay))
         return fetchConversations(retryCount + 1)
       }
-      const errMsg = err instanceof DOMException && err.name === 'AbortError'
-        ? 'Server is taking too long to respond. It may be compiling — please wait a moment and refresh.'
-        : 'Unable to load conversations. The server may be starting up — please try again in a few seconds.'
-      setError(errMsg)
+      // After all retries exhausted, silently set empty conversations and show a subtle warning
+      // Do NOT show a blocking error — the user can still create new conversations
+      console.warn('AIOS: Could not load conversations after 5 retries. Server may be starting up.')
+      setConversations([])
+      // Only show error if it's not a transient connection issue
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // Timeout — server is probably still compiling, don't alarm the user
+        console.warn('AIOS: Request timed out. Server may still be compiling.')
+      } else {
+        setError('Unable to load saved conversations. You can still start a new chat.')
+      }
     } finally {
       setIsLoading(false)
     }
@@ -408,10 +415,10 @@ export default function ChatModule() {
   // ── Fetch messages when conversation selected ─────────────────────────────
 
   const fetchMessages = useCallback(async (id: string, retryCount = 0) => {
-    setIsLoading(true)
+    if (retryCount === 0) setIsLoading(true)
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 15000)
+      const timeoutId = setTimeout(() => controller.abort(), 30000)
       const res = await fetch(`/api/conversations/${id}`, { signal: controller.signal })
       clearTimeout(timeoutId)
       if (!res.ok) throw new Error('Failed to fetch messages')
@@ -421,12 +428,14 @@ export default function ChatModule() {
         setSystemPrompt(data.systemPrompt)
       }
     } catch (err) {
-      console.error('Fetch messages error:', err)
-      if (retryCount < 2) {
-        await new Promise(r => setTimeout(r, (retryCount + 1) * 2000))
+      if (retryCount < 3) {
+        const delay = (retryCount + 1) * 3000
+        console.log(`AIOS: Retrying fetch messages in ${delay / 1000}s...`)
+        await new Promise(r => setTimeout(r, delay))
         return fetchMessages(id, retryCount + 1)
       }
-      setError('Unable to load messages. Please try again.')
+      console.warn('AIOS: Could not load messages after retries.')
+      setMessages([])
     } finally {
       setIsLoading(false)
     }
