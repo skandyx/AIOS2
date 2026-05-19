@@ -1,11 +1,14 @@
 const { spawn } = require('child_process');
 const path = require('path');
 
+// Auto-detect project directory
+const PROJECT_DIR = path.resolve(__dirname);
+
 function startServer() {
   console.log(`[${new Date().toISOString()}] Starting Next.js dev server...`);
   
-  const child = spawn('node', ['node_modules/.bin/next', 'dev', '-p', '3000'], {
-    cwd: '/home/z/my-project',
+  const child = spawn('node', [path.join(PROJECT_DIR, 'node_modules/.bin/next'), 'dev', '-p', '3000'], {
+    cwd: PROJECT_DIR,
     env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=1536' },
     stdio: 'inherit'
   });

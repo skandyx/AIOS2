@@ -350,8 +350,8 @@ if [[ ! -f ".env" ]]; then
     else
         info "Generating default .env with Mistral API key..."
         mkdir -p "${DB_DIR}"
-        cat > .env << 'ENVEOF'
-DATABASE_URL=file:/home/z/my-project/db/custom.db
+        cat > .env << ENVEOF
+DATABASE_URL=file:${DB_DIR}/custom.db
 
 # ─── AI Provider API Keys ──────────────────────────────────────────────
 # Mistral AI (https://console.mistral.ai/)

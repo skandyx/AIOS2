@@ -1,6 +1,10 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
-const LOG_PATH = '/home/z/my-project/server.log';
+const path = require('path');
+
+// Auto-detect project directory (where pm.js lives)
+const PROJECT_DIR = path.resolve(__dirname);
+const LOG_PATH = path.join(PROJECT_DIR, 'server.log');
 
 let childProcess = null;
 let restartCount = 0;
@@ -16,8 +20,8 @@ function startServer() {
   log(`Starting Next.js dev server (attempt #${restartCount})...`);
 
   // Use node directly instead of bun — more stable for long-running processes
-  childProcess = spawn('node', ['node_modules/.bin/next', 'dev', '-p', '3000'], {
-    cwd: '/home/z/my-project',
+  childProcess = spawn('node', [path.join(PROJECT_DIR, 'node_modules/.bin/next'), 'dev', '-p', '3000'], {
+    cwd: PROJECT_DIR,
     env: {
       ...process.env,
       NODE_OPTIONS: '--max-old-space-size=1536',
@@ -79,4 +83,4 @@ setInterval(() => {
 process.on('SIGTERM', () => { log('PM SIGTERM'); if (childProcess) childProcess.kill(); process.exit(0); });
 process.on('SIGINT', () => { log('PM SIGINT'); if (childProcess) childProcess.kill(); process.exit(0); });
 
-log('Process manager started');
+log(`Process manager started (project dir: ${PROJECT_DIR})`);

@@ -341,3 +341,27 @@ Stage Summary:
 - ChatModule much more resilient: 5 retries, 30s timeout, non-blocking errors
 - "Failed to fetch conversations" error should no longer appear to users
 - README updated with all latest changes
+
+---
+Task ID: 13
+Agent: Main
+Task: Remove all hardcoded /home/z/my-project paths - make app portable
+
+Work Log:
+- Fixed .env: DATABASE_URL changed from `file:/home/z/my-project/db/custom.db` to `file:./db/custom.db` (relative path)
+- Fixed pm.js: Replaced hardcoded paths with `path.resolve(__dirname)` for PROJECT_DIR and LOG_PATH
+- Fixed supervisor.sh: Replaced all hardcoded paths with auto-detected PROJECT_DIR
+- Fixed keep-alive.sh: Replaced hardcoded paths with auto-detected PROJECT_DIR
+- Fixed run-server.sh: Replaced hardcoded paths with auto-detected PROJECT_DIR
+- Fixed start-standalone.js: Replaced hardcoded paths with `path.resolve(__dirname)` for PROJECT_DIR and LOG_PATH
+- Fixed server-manager.js: Replaced hardcoded paths with `path.resolve(__dirname)` for PROJECT_DIR
+- Fixed install.sh: .env template now uses ${DB_DIR} variable instead of hardcoded path
+- Verified: zero remaining hardcoded `/home/z/my-project` paths in all .js, .sh, and .env files
+- Tested: Database works with relative path, API returns 200
+- Lint passes clean
+
+Stage Summary:
+- ALL hardcoded /home/z/my-project paths removed from every file
+- App is now fully portable — works from any directory where it's extracted
+- DATABASE_URL uses relative path `file:./db/custom.db`
+- All scripts auto-detect their own directory via __dirname or BASH_SOURCE

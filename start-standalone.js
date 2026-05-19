@@ -1,14 +1,17 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
+const path = require('path');
 
-const LOG_PATH = '/home/z/my-project/dev.log';
+// Auto-detect project directory
+const PROJECT_DIR = path.resolve(__dirname);
+const LOG_PATH = path.join(PROJECT_DIR, 'dev.log');
 
 // Clear log
 fs.writeFileSync(LOG_PATH, '');
 
 function startServer() {
-  const child = spawn('node', ['node_modules/.bin/next', 'dev', '-p', '3000'], {
-    cwd: '/home/z/my-project',
+  const child = spawn('node', [path.join(PROJECT_DIR, 'node_modules/.bin/next'), 'dev', '-p', '3000'], {
+    cwd: PROJECT_DIR,
     env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=1536' },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
@@ -31,7 +34,7 @@ function startServer() {
   });
   
   // Write PID file
-  fs.writeFileSync('/home/z/my-project/next-server.pid', child.pid.toString());
+  fs.writeFileSync(path.join(PROJECT_DIR, 'next-server.pid'), child.pid.toString());
   
   console.log(`Server started with PID ${child.pid}`);
 }
