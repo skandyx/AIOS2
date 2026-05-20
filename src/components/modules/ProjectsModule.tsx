@@ -53,6 +53,7 @@ import {
   Rocket,
   PartyPopper,
   Edit3,
+  Loader2,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -600,6 +601,9 @@ export default function ProjectsModule() {
   const [editForm, setEditForm] = useState<{ name: string; description: string; requirements: string; notes: string; icon: string; category: string; priority: ProjectPriority; dueDate: string }>({
     name: '', description: '', requirements: '', notes: '', icon: '', category: '', priority: 'medium', dueDate: '',
   })
+  const [aiAnalyzing, setAiAnalyzing] = useState(false)
+  const [aiTasksGenerated, setAiTasksGenerated] = useState(0)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   // Fetch projects
   const fetchProjects = useCallback(async () => {
@@ -671,9 +675,11 @@ export default function ProjectsModule() {
     }
   }
 
-  // Create project
+  // Create project - auto-open detail view and show hint for AI generation
   const handleProjectCreated = (project: ProjectData) => {
     setProjects((prev) => [project, ...prev])
+    // Auto-open the project detail view
+    handleSelectProject(project)
   }
 
   // Delete project
@@ -764,40 +770,40 @@ export default function ProjectsModule() {
   // Add task
   const handleAddTask = async () => {
     if (!selectedProject || !newTaskTitle.trim()) return
-    const newTask: TaskData = {
-      id: `task-${Date.now()}`,
-      title: newTaskTitle.trim(),
-      description: newTaskDesc.trim() || undefined,
-      status: 'todo',
-      createdAt: new Date().toISOString(),
-    }
-
-    const updated = {
-      ...selectedProject,
-      tasks: [...(selectedProject.tasks || []), newTask],
-      _count: { ...selectedProject._count!, tasks: (selectedProject._count?.tasks ?? 0) + 1 },
-    }
-    setSelectedProject(updated)
-    setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
-    setNewTaskTitle('')
-    setNewTaskDesc('')
 
     try {
-      await fetch(`/api/projects/${selectedProject.id}/tasks`, {
+      const res = await fetch(`/api/projects/${selectedProject.id}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newTask.title, description: newTask.description }),
+        body: JSON.stringify({ title: newTaskTitle.trim(), description: newTaskDesc.trim() || undefined }),
       })
+
+      if (res.ok) {
+        const newTask = await res.json()
+        const updated = {
+          ...selectedProject,
+          tasks: [...(selectedProject.tasks || []), newTask],
+          _count: { ...selectedProject._count!, tasks: (selectedProject._count?.tasks ?? 0) + 1 },
+        }
+        setSelectedProject(updated)
+        setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+      }
     } catch {
-      // optimistically added
+      // silently fail
     }
+    setNewTaskTitle('')
+    setNewTaskDesc('')
   }
 
   // Toggle task status
   const handleToggleTask = async (taskId: string) => {
     if (!selectedProject) return
+    const task = (selectedProject.tasks || []).find(t => t.id === taskId)
+    if (!task) return
+    const newStatus = task.status === 'done' ? 'todo' : 'done'
+
     const tasks = (selectedProject.tasks || []).map((t) =>
-      t.id === taskId ? { ...t, status: t.status === 'done' ? 'todo' as const : 'done' as const } : t
+      t.id === taskId ? { ...t, status: newStatus } : t
     )
     const updated = { ...selectedProject, tasks }
     setSelectedProject(updated)
@@ -807,10 +813,39 @@ export default function ProjectsModule() {
       await fetch(`/api/projects/${selectedProject.id}/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: tasks.find(t => t.id === taskId)?.status }),
+        body: JSON.stringify({ status: newStatus }),
       })
     } catch {
       // silently fail
+    }
+  }
+
+  // AI task generation
+  const handleAiAnalyze = async () => {
+    if (!selectedProject) return
+    setAiAnalyzing(true)
+    setAiError(null)
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.id}/analyze`, {
+        method: 'POST',
+      })
+      const data = await res.json()
+      if (data.success) {
+        setAiTasksGenerated(data.tasksCreated)
+        // Refresh the project detail
+        const detailRes = await fetch(`/api/projects/${selectedProject.id}`)
+        if (detailRes.ok) {
+          const detail = await detailRes.json()
+          setSelectedProject(detail)
+          setProjects((prev) => prev.map((p) => (p.id === detail.id ? detail : p)))
+        }
+      } else {
+        setAiError(data.error || 'AI analysis failed')
+      }
+    } catch {
+      setAiError('Failed to connect to AI service')
+    } finally {
+      setTimeout(() => setAiAnalyzing(false), 1500)
     }
   }
 
@@ -1127,6 +1162,16 @@ export default function ProjectsModule() {
                 </div>
               </CardContent>
             )}
+
+            {/* AI analyzing indicator */}
+            {aiAnalyzing && (
+              <CardContent className="px-4 pb-4 pt-0">
+                <div className="flex items-center gap-2 text-xs text-violet-400 animate-pulse bg-violet-500/5 rounded-lg p-3 border border-violet-500/20">
+                  <Loader2 className="size-4 animate-spin" />
+                  <span>AI is analyzing your project and generating tasks...</span>
+                </div>
+              </CardContent>
+            )}
           </Card>
 
           {/* Edit Dialog */}
@@ -1422,6 +1467,36 @@ export default function ProjectsModule() {
                       className="bg-neutral-900 border-neutral-700 text-white h-9 text-sm"
                     />
                   )}
+
+                  {/* AI Generate Button */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAiAnalyze}
+                      disabled={aiAnalyzing || !(selectedProject.description || selectedProject.requirements)}
+                      className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 gap-1.5 h-9 text-xs"
+                    >
+                      <Sparkles className="size-3" />
+                      {aiAnalyzing ? 'AI Generating...' : 'Generate Tasks with AI'}
+                    </Button>
+                    {aiAnalyzing && (
+                      <span className="text-xs text-violet-400 animate-pulse flex items-center gap-1">
+                        <Loader2 className="size-3 animate-spin" />
+                        AI is analyzing your project...
+                      </span>
+                    )}
+                    {aiTasksGenerated > 0 && !aiAnalyzing && (
+                      <span className="text-xs text-emerald-400">
+                        ✨ {aiTasksGenerated} tasks generated by AI
+                      </span>
+                    )}
+                    {aiError && (
+                      <span className="text-xs text-red-400">
+                        {aiError}
+                      </span>
+                    )}
+                  </div>
 
                   <Separator className="bg-neutral-800" />
 

@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+// Map DB task status to frontend status
+function mapTaskStatus(status: string): string {
+  switch (status) {
+    case 'pending': return 'todo'
+    case 'completed': return 'done'
+    default: return status
+  }
+}
+
 // GET /api/projects/[id] - Get a specific project with all related data
 export async function GET(
   _request: NextRequest,
@@ -71,7 +80,16 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(project)
+    // Map task statuses from DB format to frontend format
+    const mappedProject = {
+      ...project,
+      tasks: project.tasks.map(task => ({
+        ...task,
+        status: mapTaskStatus(task.status),
+      })),
+    }
+
+    return NextResponse.json(mappedProject)
   } catch (error) {
     console.error('Get project error:', error)
     return NextResponse.json(

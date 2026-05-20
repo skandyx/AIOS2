@@ -365,3 +365,29 @@ Stage Summary:
 - App is now fully portable — works from any directory where it's extracted
 - DATABASE_URL uses relative path `file:./db/custom.db`
 - All scripts auto-detect their own directory via __dirname or BASH_SOURCE
+---
+Task ID: 1
+Agent: Main Agent
+Task: Implement project creation → AI task generation flow
+
+Work Log:
+- Explored existing codebase to understand project/task models and frontend
+- Found that project-scoped task API routes were missing (POST/PATCH/DELETE)
+- Found that AI task generation was 0% implemented
+- Found task status mismatch between frontend (todo/done) and DB (pending/completed)
+- Created `/src/app/api/projects/[id]/tasks/route.ts` with GET and POST handlers
+- Created `/src/app/api/projects/[id]/tasks/[taskId]/route.ts` with PATCH and DELETE handlers
+- Created `/src/app/api/projects/[id]/analyze/route.ts` with GET and POST (AI generation) handlers
+- Added status mapping (todo↔pending, done↔completed) in all API routes
+- Added status mapping in project detail endpoint (`[id]/route.ts`)
+- Updated ProjectsModule.tsx frontend with AI generation button, loading states, and error handling
+- Improved JSON extraction from AI responses in analyze endpoint
+- Tested end-to-end: project creation, manual task creation, task status toggle, AI task generation (29 tasks generated)
+
+Stage Summary:
+- All 4 missing API routes created and working
+- AI task generation works via POST /api/projects/[id]/analyze
+- Status mapping works correctly between frontend and DB
+- Frontend has "Generate Tasks with AI" button with Sparkles icon
+- AI generates 5-29 tasks depending on project complexity
+- Auto-trigger on project creation removed due to sandbox memory constraints (available via manual button)

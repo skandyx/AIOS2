@@ -97,6 +97,10 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Note: AI task generation is available via POST /api/projects/[id]/analyze
+    // It's triggered manually from the UI to avoid memory issues from background processing.
+    // The "Generate Tasks with AI" button in the Tasks tab calls that endpoint.
+
     return NextResponse.json(project, { status: 201 })
   } catch (error) {
     console.error('Create project error:', error)
