@@ -6,7 +6,7 @@ import { io } from 'socket.io-client';
 import {
   MessageSquare, Bot, Brain, Workflow, Activity, Puzzle,
   Cpu, Terminal, Shield, Link2, Mic, ChevronLeft, ChevronRight,
-  Bell, Search, Command, Zap, Wifi, WifiOff, Settings,
+  Bell, Search, Command, Zap, Wifi, WifiOff,
   Sparkles, LayoutDashboard, Volume2, VolumeX, X, CheckCircle2,
   AlertTriangle, AlertCircle, Info, Maximize2, Minimize2,
   Wrench, FolderKanban, Package, Menu
@@ -21,15 +21,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { useAIOSStore, type AIModule } from '@/lib/store';
 
 // Module imports (all default exports)
+import DashboardModule from '@/components/modules/DashboardModule';
 import ChatModule from '@/components/modules/ChatModule';
 import VoiceModule from '@/components/modules/VoiceModule';
 import AgentsModule from '@/components/modules/AgentsModule';
@@ -56,6 +51,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, color: 'text-cyan-400', shortcut: 'D' },
   { id: 'chat', label: 'AI Chat', icon: MessageSquare, color: 'text-cyan-400', shortcut: '1' },
   { id: 'voice', label: 'Voice', icon: Mic, color: 'text-emerald-400', shortcut: '2' },
   { id: 'agents', label: 'Agents', icon: Bot, color: 'text-violet-400', shortcut: '3' },
@@ -75,6 +71,7 @@ const navItems: NavItem[] = [
 // ─── Module Render Map ──────────────────────────────────────────────────────────
 
 const moduleComponents: Record<AIModule, ComponentType> = {
+  dashboard: DashboardModule,
   chat: ChatModule,
   voice: VoiceModule,
   agents: AgentsModule,
@@ -242,7 +239,7 @@ export default function AIOSDashboard() {
   // ─── Clock (client-only to avoid hydration mismatch) ───────────────────
   useEffect(() => {
     const tick = () => setCurrentTime(new Date());
-    tick(); // Initial set on mount (client-only)
+    tick();
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, []);
@@ -250,14 +247,12 @@ export default function AIOSDashboard() {
   // ─── Keyboard Shortcuts ─────────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd/Ctrl + K for command palette
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setCommandPaletteOpen(prev => !prev);
         setCommandSearch('');
       }
 
-      // Number keys for module switching (only when not typing in input)
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       const numKey = parseInt(e.key);
@@ -274,7 +269,6 @@ export default function AIOSDashboard() {
         }
       }
 
-      // Escape to close modals
       if (e.key === 'Escape') {
         setCommandPaletteOpen(false);
         setShowNotifications(false);
@@ -298,6 +292,7 @@ export default function AIOSDashboard() {
 
   // ─── Command Palette Actions ────────────────────────────────────────────
   const commandActions = [
+    { id: 'dashboard', label: 'Go to Dashboard', icon: LayoutDashboard, module: 'dashboard' as AIModule },
     { id: 'chat', label: 'Go to AI Chat', icon: MessageSquare, module: 'chat' as AIModule },
     { id: 'voice', label: 'Go to Voice', icon: Mic, module: 'voice' as AIModule },
     { id: 'agents', label: 'Go to Agents', icon: Bot, module: 'agents' as AIModule },
@@ -341,7 +336,6 @@ export default function AIOSDashboard() {
         </AnimatePresence>
 
         {/* ─── Left Sidebar ─────────────────────────────────────────────── */}
-        {/* Desktop: always visible, can collapse */}
         <motion.aside
           className={`relative flex flex-col border-r border-border/50 bg-card/30 backdrop-blur-xl z-20 
             hidden md:flex
@@ -421,15 +415,12 @@ export default function AIOSDashboard() {
 
           {/* Sidebar Footer */}
           <div className="border-t border-border/50 p-2 space-y-1">
-            {/* Connection Status */}
             <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${isConnected || isServerOnline ? 'text-emerald-400' : 'text-red-400'}`}>
               {isConnected || isServerOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
               {!sidebarCollapsed && (
                 <span className="text-xs">{isConnected ? 'Real-time' : isServerOnline ? 'Online' : 'Offline'}</span>
               )}
             </div>
-
-            {/* Collapse Toggle */}
             <button
               onClick={toggleSidebar}
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors w-full"
@@ -456,7 +447,6 @@ export default function AIOSDashboard() {
               transition={{ duration: 0.2, ease: 'easeInOut' }}
               className="fixed left-0 top-0 bottom-0 w-[280px] flex flex-col border-r border-border/50 bg-card/95 backdrop-blur-xl z-40 md:hidden"
             >
-              {/* Logo */}
               <div className="flex items-center gap-3 px-4 h-14 border-b border-border/50">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-emerald-500 flex items-center justify-center aios-glow flex-shrink-0">
                   <Sparkles className="w-4 h-4 text-white" />
@@ -472,8 +462,6 @@ export default function AIOSDashboard() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-
-              {/* Navigation Items */}
               <ScrollArea className="flex-1 py-2">
                 <nav className="flex flex-col gap-1 px-2">
                   {navItems.map((item) => {
@@ -499,8 +487,6 @@ export default function AIOSDashboard() {
                   })}
                 </nav>
               </ScrollArea>
-
-              {/* Footer */}
               <div className="border-t border-border/50 p-3">
                 <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${isConnected || isServerOnline ? 'text-emerald-400' : 'text-red-400'}`}>
                   {isConnected || isServerOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
@@ -515,9 +501,7 @@ export default function AIOSDashboard() {
         <div className="flex-1 flex flex-col min-w-0">
           {/* ─── Top Header ─────────────────────────────────────────────── */}
           <header className="h-14 border-b border-border/50 bg-card/30 backdrop-blur-xl flex items-center justify-between px-3 sm:px-4 z-10">
-            {/* Left: Mobile menu + Module Title */}
             <div className="flex items-center gap-2 sm:gap-3">
-              {/* Mobile menu button */}
               <Button
                 variant="ghost"
                 size="icon"
@@ -541,7 +525,6 @@ export default function AIOSDashboard() {
               </div>
             </div>
 
-            {/* Center: Quick Stats */}
             <div className="hidden md:flex items-center gap-4 text-xs text-muted-foreground">
               <div className="flex items-center gap-1.5">
                 <Bot className="w-3.5 h-3.5 text-cyan-400" />
@@ -559,9 +542,7 @@ export default function AIOSDashboard() {
               </div>
             </div>
 
-            {/* Right: Actions */}
             <div className="flex items-center gap-2">
-              {/* Voice Toggle */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -576,7 +557,6 @@ export default function AIOSDashboard() {
                 <TooltipContent>{isVoiceActive ? 'Voice Active' : 'Voice Muted'}</TooltipContent>
               </Tooltip>
 
-              {/* Command Palette Trigger */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -591,7 +571,6 @@ export default function AIOSDashboard() {
                 <TooltipContent>Command Palette (⌘K)</TooltipContent>
               </Tooltip>
 
-              {/* Notifications */}
               <div className="relative">
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -613,7 +592,6 @@ export default function AIOSDashboard() {
                 </Tooltip>
               </div>
 
-              {/* Fullscreen */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -628,7 +606,6 @@ export default function AIOSDashboard() {
                 <TooltipContent>{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</TooltipContent>
               </Tooltip>
 
-              {/* Time (rendered only on client to avoid hydration mismatch) */}
               <div className="hidden lg:flex items-center gap-2 text-xs text-muted-foreground ml-2">
                 {currentTime ? (
                   <span className="font-mono">

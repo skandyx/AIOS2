@@ -3,6 +3,7 @@ import { create } from "zustand";
 // ─── Type Definitions ───────────────────────────────────────────────────────
 
 export type AIModule =
+  | "dashboard"
   | "chat"
   | "agents"
   | "memory"
@@ -186,7 +187,7 @@ interface AIOSStore {
 
 export const useAIOSStore = create<AIOSStore>((set) => ({
   // Navigation
-  activeModule: "chat",
+  activeModule: "dashboard",
   setActiveModule: (module) => set({ activeModule: module }),
 
   // Chat

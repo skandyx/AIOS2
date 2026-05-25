@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { io } from 'socket.io-client'
 import {
   Card,
   CardContent,
@@ -54,6 +55,16 @@ import {
   PartyPopper,
   Edit3,
   Loader2,
+  Bot,
+  File,
+  Folder,
+  FolderOpen,
+  FileCode,
+  FileJson,
+  FileText,
+  MessageSquare,
+  Send,
+  Users,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -121,6 +132,32 @@ interface InstalledMcp {
   name: string
   description?: string
   url?: string
+}
+
+interface AgentActivity {
+  id: string
+  agentName: string
+  agentType: string
+  action: string
+  timestamp: string
+  status: 'active' | 'idle' | 'busy' | 'error'
+}
+
+interface AgentMessage {
+  id: string
+  from: string
+  fromType: string
+  content: string
+  timestamp: string
+}
+
+interface FileTreeNode {
+  name: string
+  type: 'file' | 'folder'
+  icon?: React.ReactNode
+  size?: string
+  modified?: string
+  children?: FileTreeNode[]
 }
 
 // ─── Status Config ────────────────────────────────────────────────────────────
@@ -604,6 +641,11 @@ export default function ProjectsModule() {
   const [aiAnalyzing, setAiAnalyzing] = useState(false)
   const [aiTasksGenerated, setAiTasksGenerated] = useState(0)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [agentActivities, setAgentActivities] = useState<AgentActivity[]>([])
+  const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([])
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['src', 'src/components']))
+  const [detailTab, setDetailTab] = useState<'code' | 'chat'>('code')
+  const socketRef = useRef<ReturnType<typeof io> | null>(null)
 
   // Fetch projects
   const fetchProjects = useCallback(async () => {
@@ -656,6 +698,318 @@ export default function ProjectsModule() {
     fetchInstalledSkills()
     fetchInstalledMcp()
   }, [fetchInstalledSkills, fetchInstalledMcp])
+
+  // ─── Agent Simulation Data ──────────────────────────────────────────────────
+
+  const AGENT_NAMES = [
+    { name: 'Atlas', type: 'coordinator' },
+    { name: 'CodePilot', type: 'developer' },
+    { name: 'Shield', type: 'security' },
+    { name: 'DataForge', type: 'data' },
+    { name: 'TestRunner', type: 'qa' },
+  ]
+
+  const AGENT_ACTIONS = [
+    'Analyzing project requirements...',
+    'Generating component scaffold...',
+    'Running security audit...',
+    'Optimizing database queries...',
+    'Writing unit tests...',
+    'Reviewing code changes...',
+    'Updating API endpoints...',
+    'Syncing with MCP server...',
+    'Processing task queue...',
+    'Building deployment pipeline...',
+    'Checking dependencies...',
+    'Formatting and linting code...',
+  ]
+
+  const AGENT_CHAT_MESSAGES = [
+    { from: 'Atlas', fromType: 'coordinator', content: 'I\'ve reviewed the project requirements. We should prioritize the API layer first.' },
+    { from: 'CodePilot', fromType: 'developer', content: 'Agreed. I\'ll start scaffolding the routes and middleware. Should be ready in a few minutes.' },
+    { from: 'Shield', fromType: 'security', content: 'Make sure we add input validation on all endpoints. I found a potential XSS vector in the spec.' },
+    { from: 'DataForge', fromType: 'data', content: 'The schema looks good. I\'m optimizing the indexes for the query patterns we identified.' },
+    { from: 'TestRunner', fromType: 'qa', content: 'I\'ve set up the test framework. Running initial smoke tests now.' },
+    { from: 'Atlas', fromType: 'coordinator', content: 'Good progress everyone. Let\'s sync on the component architecture after the API is stable.' },
+    { from: 'CodePilot', fromType: 'developer', content: 'Just pushed the auth module. Uses JWT with refresh token rotation as discussed.' },
+    { from: 'Shield', fromType: 'security', content: 'Auth module looks solid. I\'ll run a penetration test on it next.' },
+    { from: 'DataForge', fromType: 'data', content: 'Migration scripts are ready. Should we seed the dev database with test data?' },
+    { from: 'TestRunner', fromType: 'qa', content: 'Coverage is at 78% and climbing. I added integration tests for the new endpoints.' },
+    { from: 'Atlas', fromType: 'coordinator', content: 'Excellent work. Let\'s target 90% coverage before we merge to main.' },
+    { from: 'CodePilot', fromType: 'developer', content: 'Working on the dashboard UI now. Using the design tokens from the spec.' },
+  ]
+
+  const generateFileTree = useCallback((project: ProjectData): FileTreeNode[] => {
+    const category = project.category || 'Web App'
+    switch (category) {
+      case 'Web App':
+        return [
+          { name: 'src', type: 'folder', children: [
+            { name: 'components', type: 'folder', children: [
+              { name: 'ui', type: 'folder', children: [
+                { name: 'Button.tsx', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.4 KB', modified: '2h ago' },
+                { name: 'Card.tsx', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.8 KB', modified: '3h ago' },
+                { name: 'Dialog.tsx', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '3.1 KB', modified: '1d ago' },
+              ]},
+              { name: 'Layout.tsx', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '4.2 KB', modified: '1h ago' },
+              { name: 'Dashboard.tsx', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '6.8 KB', modified: '30m ago' },
+            ]},
+            { name: 'lib', type: 'folder', children: [
+              { name: 'utils.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.2 KB', modified: '2d ago' },
+              { name: 'db.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.1 KB', modified: '1d ago' },
+              { name: 'auth.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '3.5 KB', modified: '4h ago' },
+            ]},
+            { name: 'api', type: 'folder', children: [
+              { name: 'projects', type: 'folder', children: [
+                { name: 'route.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.8 KB', modified: '2h ago' },
+              ]},
+              { name: 'tasks', type: 'folder', children: [
+                { name: 'route.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.9 KB', modified: '3h ago' },
+              ]},
+            ]},
+            { name: 'app', type: 'folder', children: [
+              { name: 'layout.tsx', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.5 KB', modified: '1d ago' },
+              { name: 'page.tsx', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '3.2 KB', modified: '1h ago' },
+            ]},
+            { name: 'hooks', type: 'folder', children: [
+              { name: 'useAuth.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.8 KB', modified: '5h ago' },
+              { name: 'useApi.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.3 KB', modified: '6h ago' },
+            ]},
+          ]},
+          { name: 'public', type: 'folder', children: [
+            { name: 'favicon.ico', type: 'file', icon: <File className="size-3.5 text-slate-400" />, size: '4.2 KB', modified: '1w ago' },
+            { name: 'logo.svg', type: 'file', icon: <File className="size-3.5 text-slate-400" />, size: '1.1 KB', modified: '3d ago' },
+          ]},
+          { name: 'package.json', type: 'file', icon: <FileJson className="size-3.5 text-amber-400" />, size: '1.8 KB', modified: '2d ago' },
+          { name: 'tsconfig.json', type: 'file', icon: <FileJson className="size-3.5 text-amber-400" />, size: '0.6 KB', modified: '1w ago' },
+          { name: 'next.config.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '0.3 KB', modified: '1w ago' },
+          { name: 'README.md', type: 'file', icon: <FileText className="size-3.5 text-blue-400" />, size: '2.1 KB', modified: '3d ago' },
+        ]
+      case 'API':
+        return [
+          { name: 'src', type: 'folder', children: [
+            { name: 'routes', type: 'folder', children: [
+              { name: 'auth.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '3.2 KB', modified: '1h ago' },
+              { name: 'users.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '4.1 KB', modified: '2h ago' },
+              { name: 'projects.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '5.3 KB', modified: '30m ago' },
+            ]},
+            { name: 'middleware', type: 'folder', children: [
+              { name: 'auth.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.1 KB', modified: '1d ago' },
+              { name: 'rateLimit.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.4 KB', modified: '2d ago' },
+              { name: 'errorHandler.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.8 KB', modified: '1d ago' },
+            ]},
+            { name: 'models', type: 'folder', children: [
+              { name: 'User.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.4 KB', modified: '3d ago' },
+              { name: 'Project.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.9 KB', modified: '2d ago' },
+            ]},
+            { name: 'utils', type: 'folder', children: [
+              { name: 'validators.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.8 KB', modified: '4h ago' },
+              { name: 'helpers.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.5 KB', modified: '1d ago' },
+            ]},
+          ]},
+          { name: 'config', type: 'folder', children: [
+            { name: 'database.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '0.8 KB', modified: '1w ago' },
+            { name: 'env.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '0.5 KB', modified: '1w ago' },
+          ]},
+          { name: 'package.json', type: 'file', icon: <FileJson className="size-3.5 text-amber-400" />, size: '1.2 KB', modified: '3d ago' },
+          { name: 'tsconfig.json', type: 'file', icon: <FileJson className="size-3.5 text-amber-400" />, size: '0.6 KB', modified: '1w ago' },
+        ]
+      case 'AI':
+        return [
+          { name: 'src', type: 'folder', children: [
+            { name: 'agents', type: 'folder', children: [
+              { name: 'coordinator.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '4.5 KB', modified: '1h ago' },
+              { name: 'developer.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '6.2 KB', modified: '2h ago' },
+              { name: 'reviewer.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '3.8 KB', modified: '3h ago' },
+            ]},
+            { name: 'models', type: 'folder', children: [
+              { name: 'llm.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '5.1 KB', modified: '4h ago' },
+              { name: 'embeddings.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.3 KB', modified: '1d ago' },
+            ]},
+            { name: 'tools', type: 'folder', children: [
+              { name: 'search.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '3.2 KB', modified: '1d ago' },
+              { name: 'code_gen.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '4.7 KB', modified: '30m ago' },
+            ]},
+            { name: 'api', type: 'folder', children: [
+              { name: 'routes.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.9 KB', modified: '2h ago' },
+            ]},
+          ]},
+          { name: 'data', type: 'folder', children: [
+            { name: 'prompts.json', type: 'file', icon: <FileJson className="size-3.5 text-amber-400" />, size: '8.2 KB', modified: '1d ago' },
+            { name: 'config.yaml', type: 'file', icon: <FileText className="size-3.5 text-blue-400" />, size: '1.1 KB', modified: '3d ago' },
+          ]},
+          { name: 'requirements.txt', type: 'file', icon: <FileText className="size-3.5 text-blue-400" />, size: '0.4 KB', modified: '1w ago' },
+          { name: 'README.md', type: 'file', icon: <FileText className="size-3.5 text-blue-400" />, size: '2.8 KB', modified: '2d ago' },
+        ]
+      default:
+        return [
+          { name: 'src', type: 'folder', children: [
+            { name: 'index.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.2 KB', modified: '1h ago' },
+            { name: 'utils.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '0.8 KB', modified: '3h ago' },
+          ]},
+          { name: 'config', type: 'folder', children: [
+            { name: 'default.json', type: 'file', icon: <FileJson className="size-3.5 text-amber-400" />, size: '0.5 KB', modified: '1w ago' },
+          ]},
+          { name: 'package.json', type: 'file', icon: <FileJson className="size-3.5 text-amber-400" />, size: '0.8 KB', modified: '2d ago' },
+          { name: 'README.md', type: 'file', icon: <FileText className="size-3.5 text-blue-400" />, size: '1.0 KB', modified: '3d ago' },
+        ]
+    }
+  }, [])
+
+  // ─── WebSocket + Agent Simulation Effects ────────────────────────────────────
+
+  useEffect(() => {
+    if (view !== 'detail' || !selectedProject) return
+
+    // Connect to WebSocket
+    const socket = io('/?XTransformPort=3003', {
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 3,
+      reconnectionDelay: 1000,
+    })
+
+    socketRef.current = socket
+
+    socket.on('connect', () => {
+      // Connected to agent service
+    })
+
+    socket.on('agent:message', (msg: AgentMessage) => {
+      setAgentMessages((prev) => [msg, ...prev].slice(0, 50))
+    })
+
+    socket.on('agent:status', (activity: AgentActivity) => {
+      setAgentActivities((prev) => [activity, ...prev].slice(0, 30))
+    })
+
+    // Seed initial activities
+    const initialActivities: AgentActivity[] = AGENT_NAMES.map((agent, i) => ({
+      id: `init-${i}`,
+      agentName: agent.name,
+      agentType: agent.type,
+      action: AGENT_ACTIONS[Math.floor(Math.random() * AGENT_ACTIONS.length)],
+      timestamp: new Date(Date.now() - Math.random() * 300000).toISOString(),
+      status: (['active', 'idle', 'busy'] as const)[Math.floor(Math.random() * 3)],
+    }))
+    setAgentActivities(initialActivities)
+
+    // Seed initial chat messages
+    const initialMessages: AgentMessage[] = AGENT_CHAT_MESSAGES.slice(0, 4).map((msg, i) => ({
+      ...msg,
+      id: `init-msg-${i}`,
+      timestamp: new Date(Date.now() - (4 - i) * 120000).toISOString(),
+    }))
+    setAgentMessages(initialMessages)
+
+    // Simulate agent activities every 3-5 seconds
+    const activityInterval = setInterval(() => {
+      const agent = AGENT_NAMES[Math.floor(Math.random() * AGENT_NAMES.length)]
+      const statuses: Array<'active' | 'idle' | 'busy'> = ['active', 'idle', 'busy']
+      const newActivity: AgentActivity = {
+        id: `act-${Date.now()}`,
+        agentName: agent.name,
+        agentType: agent.type,
+        action: AGENT_ACTIONS[Math.floor(Math.random() * AGENT_ACTIONS.length)],
+        timestamp: new Date().toISOString(),
+        status: statuses[Math.floor(Math.random() * statuses.length)],
+      }
+      setAgentActivities((prev) => [newActivity, ...prev].slice(0, 30))
+    }, 3000 + Math.random() * 2000)
+
+    // Simulate agent chat messages every 8-12 seconds
+    const chatInterval = setInterval(() => {
+      const msg = AGENT_CHAT_MESSAGES[Math.floor(Math.random() * AGENT_CHAT_MESSAGES.length)]
+      const newMsg: AgentMessage = {
+        id: `msg-${Date.now()}`,
+        from: msg.from,
+        fromType: msg.fromType,
+        content: msg.content,
+        timestamp: new Date().toISOString(),
+      }
+      setAgentMessages((prev) => [newMsg, ...prev].slice(0, 50))
+    }, 8000 + Math.random() * 4000)
+
+    return () => {
+      clearInterval(activityInterval)
+      clearInterval(chatInterval)
+      socket.disconnect()
+      socketRef.current = null
+    }
+  }, [view, selectedProject?.id])
+
+  // Toggle folder expand/collapse
+  const toggleFolder = (path: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  // Agent type color mapping
+  const getAgentColor = (type: string) => {
+    switch (type) {
+      case 'coordinator': return { bg: 'bg-cyan-500/20', text: 'text-cyan-400', border: 'border-cyan-500/30', dot: 'bg-cyan-400' }
+      case 'developer': return { bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30', dot: 'bg-emerald-400' }
+      case 'security': return { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', dot: 'bg-red-400' }
+      case 'data': return { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30', dot: 'bg-amber-400' }
+      case 'qa': return { bg: 'bg-violet-500/20', text: 'text-violet-400', border: 'border-violet-500/30', dot: 'bg-violet-400' }
+      default: return { bg: 'bg-slate-500/20', text: 'text-slate-400', border: 'border-slate-500/30', dot: 'bg-slate-400' }
+    }
+  }
+
+  const getStatusDot = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-emerald-400'
+      case 'busy': return 'bg-amber-400'
+      case 'error': return 'bg-red-400'
+      default: return 'bg-slate-500'
+    }
+  }
+
+  // Render file tree recursively
+  const renderFileTree = (nodes: FileTreeNode[], depth: number = 0, parentPath: string = ''): React.ReactNode => {
+    return nodes.map((node) => {
+      const path = parentPath ? `${parentPath}/${node.name}` : node.name
+      const isExpanded = expandedFolders.has(path)
+
+      if (node.type === 'folder') {
+        return (
+          <div key={path}>
+            <button
+              className="flex items-center gap-1.5 w-full py-1 px-2 rounded text-xs text-slate-300 hover:bg-neutral-800/60 hover:text-white transition-colors"
+              style={{ paddingLeft: `${depth * 16 + 8}px` }}
+              onClick={() => toggleFolder(path)}
+            >
+              {isExpanded ? (
+                <FolderOpen className="size-3.5 text-amber-400 shrink-0" />
+              ) : (
+                <Folder className="size-3.5 text-amber-400 shrink-0" />
+              )}
+              <span className="truncate">{node.name}</span>
+            </button>
+            {isExpanded && node.children && renderFileTree(node.children, depth + 1, path)}
+          </div>
+        )
+      }
+
+      return (
+        <div
+          key={path}
+          className="flex items-center justify-between py-1 px-2 rounded text-xs hover:bg-neutral-800/60 transition-colors group"
+          style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        >
+          <div className="flex items-center gap-1.5 min-w-0">
+            {node.icon || <File className="size-3.5 text-slate-400 shrink-0" />}
+            <span className="text-slate-400 group-hover:text-white truncate transition-colors">{node.name}</span>
+          </div>
+          <span className="text-[10px] text-slate-600 shrink-0 ml-2">{node.size}</span>
+        </div>
+      )
+    })
+  }
 
   // Select project & fetch detail
   const handleSelectProject = async (project: ProjectData) => {
@@ -1079,15 +1433,15 @@ export default function ProjectsModule() {
       {/* ─── Detail View ────────────────────────────────────────────────────── */}
       {view === 'detail' && selectedProject && (
         <div className="space-y-4">
-          {/* Project Header */}
+          {/* Compact Project Header */}
           <Card className="bg-[#0d1117] border-neutral-800 py-0">
-            <CardHeader className="pb-3 pt-4 px-4">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">{selectedProject.icon || '📁'}</span>
-                  <div>
-                    <CardTitle className="text-lg text-white flex items-center gap-2">
-                      {selectedProject.name}
+            <CardContent className="px-4 py-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-2xl shrink-0">{selectedProject.icon || '📁'}</span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base font-semibold text-white truncate">{selectedProject.name}</h3>
                       <Badge
                         variant="outline"
                         className={`text-[10px] h-5 gap-1 ${STATUS_CONFIG[selectedProject.status].color} ${STATUS_CONFIG[selectedProject.status].bgColor} ${STATUS_CONFIG[selectedProject.status].borderColor}`}
@@ -1101,20 +1455,22 @@ export default function ProjectsModule() {
                       >
                         {PRIORITY_CONFIG[selectedProject.priority].label}
                       </Badge>
-                    </CardTitle>
-                    <CardDescription className="text-sm text-slate-400 mt-1">
-                      {selectedProject.description || 'No description'}
-                    </CardDescription>
+                      {selectedProject.category && (
+                        <Badge variant="outline" className="text-[10px] h-5 text-rose-300 bg-rose-500/10 border-rose-500/20">
+                          {selectedProject.category}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5 truncate">{selectedProject.description || 'No description'}</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  {/* Status change */}
                   <Select
                     value={selectedProject.status}
                     onValueChange={(v) => handleStatusChangeRequest(v as ProjectStatus)}
                   >
-                    <SelectTrigger className="bg-neutral-900 border-neutral-700 text-white h-8 text-xs w-36">
+                    <SelectTrigger className="bg-neutral-900 border-neutral-700 text-white h-7 text-xs w-32">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-neutral-900 border-neutral-700">
@@ -1125,53 +1481,34 @@ export default function ProjectsModule() {
                       ))}
                     </SelectContent>
                   </Select>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={startEditing}
-                    className="border-neutral-700 text-slate-300 gap-1 h-8"
-                  >
-                    <Edit3 className="size-3" />
-                    Edit
+                  <Button variant="outline" size="sm" onClick={startEditing} className="border-neutral-700 text-slate-300 gap-1 h-7 text-xs">
+                    <Edit3 className="size-3" />Edit
                   </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDeleteProject(selectedProject.id)}
-                    className="border-red-500/30 text-red-400 hover:bg-red-500/10 gap-1 h-8"
-                  >
+                  <Button variant="outline" size="sm" onClick={() => handleDeleteProject(selectedProject.id)} className="border-red-500/30 text-red-400 hover:bg-red-500/10 h-7 w-7 p-0">
                     <Trash2 className="size-3" />
                   </Button>
                 </div>
               </div>
-            </CardHeader>
 
-            {/* Progress bar */}
-            {selectedProject.tasks && selectedProject.tasks.length > 0 && (
-              <CardContent className="px-4 pb-4 pt-0">
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">
-                      {selectedProject.tasks.filter(t => t.status === 'done').length} / {selectedProject.tasks.length} tasks complete
-                    </span>
+              {/* Progress bar */}
+              {selectedProject.tasks && selectedProject.tasks.length > 0 && (
+                <div className="mt-3 space-y-1">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-slate-400">{selectedProject.tasks.filter(t => t.status === 'done').length}/{selectedProject.tasks.length} tasks</span>
                     <span className="text-rose-400 font-medium">{calculateProgress(selectedProject.tasks)}%</span>
                   </div>
-                  <Progress value={calculateProgress(selectedProject.tasks)} className="h-2 bg-neutral-800 [&>div]:bg-gradient-to-r [&>div]:from-rose-500 [&>div]:to-pink-500" />
+                  <Progress value={calculateProgress(selectedProject.tasks)} className="h-1.5 bg-neutral-800 [&>div]:bg-gradient-to-r [&>div]:from-rose-500 [&>div]:to-pink-500" />
                 </div>
-              </CardContent>
-            )}
+              )}
 
-            {/* AI analyzing indicator */}
-            {aiAnalyzing && (
-              <CardContent className="px-4 pb-4 pt-0">
-                <div className="flex items-center gap-2 text-xs text-violet-400 animate-pulse bg-violet-500/5 rounded-lg p-3 border border-violet-500/20">
-                  <Loader2 className="size-4 animate-spin" />
+              {/* AI indicator */}
+              {aiAnalyzing && (
+                <div className="mt-3 flex items-center gap-2 text-xs text-violet-400 animate-pulse bg-violet-500/5 rounded-lg p-2 border border-violet-500/20">
+                  <Loader2 className="size-3 animate-spin" />
                   <span>AI is analyzing your project and generating tasks...</span>
                 </div>
-              </CardContent>
-            )}
+              )}
+            </CardContent>
           </Card>
 
           {/* Edit Dialog */}
@@ -1257,284 +1594,200 @@ export default function ProjectsModule() {
             }}
           />
 
-          {/* Tabs */}
-          <Tabs defaultValue="overview" className="space-y-4">
-            <TabsList className="bg-neutral-900 border border-neutral-800">
-              <TabsTrigger value="overview" className="data-[state=active]:bg-rose-600/20 data-[state=active]:text-rose-400 gap-1">
-                <LayoutGrid className="size-3" />
-                Overview
-              </TabsTrigger>
-              <TabsTrigger value="tasks" className="data-[state=active]:bg-rose-600/20 data-[state=active]:text-rose-400 gap-1">
-                <ListChecks className="size-3" />
-                Tasks
-              </TabsTrigger>
-              <TabsTrigger value="skills" className="data-[state=active]:bg-rose-600/20 data-[state=active]:text-rose-400 gap-1">
-                <Sparkles className="size-3" />
-                Skills
-              </TabsTrigger>
-              <TabsTrigger value="mcp" className="data-[state=active]:bg-rose-600/20 data-[state=active]:text-rose-400 gap-1">
-                <Server className="size-3" />
-                MCP Servers
-              </TabsTrigger>
-            </TabsList>
+          {/* ── 3-Column Layout ─────────────────────────────────────────────── */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-            {/* ── Overview Tab ── */}
-            <TabsContent value="overview" className="space-y-4">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* Project Info */}
-                <Card className="bg-[#0d1117] border-neutral-800 py-0">
-                  <CardHeader className="pb-2 pt-4 px-4">
-                    <CardTitle className="text-sm text-white flex items-center gap-2">
-                      <FolderKanban className="size-4 text-rose-400" />
-                      Project Details
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-4 space-y-3">
-                    {selectedProject.category && (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-400">Category</span>
-                        <Badge variant="outline" className="text-[10px] h-5 text-rose-300 bg-rose-500/10 border-rose-500/20">
-                          {selectedProject.category}
-                        </Badge>
-                      </div>
-                    )}
-                    {selectedProject.dueDate && (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-400">Due Date</span>
-                        <span className="text-slate-300 flex items-center gap-1">
-                          <Calendar className="size-3" />
-                          {formatDate(selectedProject.dueDate)}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Created</span>
-                      <span className="text-slate-300">{formatDate(selectedProject.createdAt)}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Last Updated</span>
-                      <span className="text-slate-300">{formatRelativeTime(selectedProject.updatedAt)}</span>
-                    </div>
-
-                    {parseTechStack(selectedProject.techStack).length > 0 && (
-                      <div className="pt-2">
-                        <span className="text-xs text-slate-400 block mb-1.5">Tech Stack</span>
-                        <div className="flex flex-wrap gap-1">
-                          {parseTechStack(selectedProject.techStack).map((tech) => (
-                            <Badge key={tech} variant="outline" className="text-[10px] h-5 border-neutral-700 text-slate-300 bg-neutral-800/50">
-                              {tech}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Requirements & Notes */}
-                <Card className="bg-[#0d1117] border-neutral-800 py-0">
-                  <CardHeader className="pb-2 pt-4 px-4">
-                    <CardTitle className="text-sm text-white flex items-center gap-2">
-                      <AlertCircle className="size-4 text-rose-400" />
-                      Requirements & Notes
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-4 space-y-3">
-                    {selectedProject.requirements ? (
-                      <div>
-                        <span className="text-xs text-slate-400 block mb-1">Requirements</span>
-                        <p className="text-xs text-slate-300 whitespace-pre-wrap bg-neutral-900/50 rounded-md p-3 border border-neutral-800">
-                          {selectedProject.requirements}
-                        </p>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-500 italic">No requirements specified</p>
-                    )}
-                    <Separator className="bg-neutral-800" />
-                    {selectedProject.notes ? (
-                      <div>
-                        <span className="text-xs text-slate-400 block mb-1">Notes</span>
-                        <p className="text-xs text-slate-300 whitespace-pre-wrap bg-neutral-900/50 rounded-md p-3 border border-neutral-800">
-                          {selectedProject.notes}
-                        </p>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-500 italic">No notes</p>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Quick Stats */}
-              <div className="grid grid-cols-3 gap-3">
-                <Card className="bg-[#0d1117] border-neutral-800 py-3">
-                  <CardContent className="flex items-center gap-3 px-4">
-                    <ListChecks className="size-5 text-amber-400" />
-                    <div>
-                      <p className="text-lg font-bold text-white">{selectedProject.tasks?.length ?? selectedProject._count?.tasks ?? 0}</p>
-                      <p className="text-xs text-slate-400">Tasks</p>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-[#0d1117] border-neutral-800 py-3">
-                  <CardContent className="flex items-center gap-3 px-4">
-                    <Sparkles className="size-5 text-violet-400" />
-                    <div>
-                      <p className="text-lg font-bold text-white">{selectedProject.skills?.length ?? selectedProject._count?.skills ?? 0}</p>
-                      <p className="text-xs text-slate-400">Skills</p>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-[#0d1117] border-neutral-800 py-3">
-                  <CardContent className="flex items-center gap-3 px-4">
-                    <Server className="size-5 text-cyan-400" />
-                    <div>
-                      <p className="text-lg font-bold text-white">{selectedProject.mcpServers?.length ?? selectedProject._count?.mcpServers ?? 0}</p>
-                      <p className="text-xs text-slate-400">MCP Servers</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Automation Tools Section */}
-              <Card className="bg-[#0d1117] border-neutral-800 py-0">
-                <CardHeader className="pb-2 pt-4 px-4">
+            {/* ── LEFT PANEL: Agent Activity ──────────────────────────────── */}
+            <Card className="bg-[#0d1117] border-neutral-800 py-0">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <div className="flex items-center justify-between">
                   <CardTitle className="text-sm text-white flex items-center gap-2">
-                    <Wrench className="size-4 text-rose-400" />
-                    Automation Tools
+                    <Bot className="size-4 text-rose-400" />
+                    Agent Activity
                   </CardTitle>
-                  <CardDescription className="text-xs text-slate-400">
-                    Quick access to installed automation services
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="px-4 pb-4">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {AUTOMATION_TOOLS.map((tool) => (
-                      <div
-                        key={tool.name}
-                        className="flex flex-col items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900/50 p-3 transition-all hover:border-rose-500/30 hover:bg-neutral-900/80 cursor-pointer group"
-                        onClick={() => window.open(tool.url, '_blank')}
-                      >
-                        <span className="text-2xl">{tool.icon}</span>
-                        <span className="text-xs font-medium text-slate-300 group-hover:text-rose-300 transition-colors">
-                          {tool.name}
-                        </span>
-                        <span className="text-[10px] text-slate-500 text-center line-clamp-2">
-                          {tool.description}
-                        </span>
-                        <ExternalLink className="size-3 text-slate-600 group-hover:text-rose-400 transition-colors" />
-                      </div>
-                    ))}
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-red-500/20 text-red-400 border border-red-500/30 text-[9px] h-5 gap-1 animate-pulse">
+                      <span className="size-1.5 rounded-full bg-red-400 animate-ping" />
+                      LIVE
+                    </Badge>
+                    <Badge variant="outline" className="text-[9px] h-5 text-slate-400 border-neutral-700 gap-1">
+                      <Users className="size-2.5" />
+                      {agentActivities.filter(a => a.status === 'active' || a.status === 'busy').length} active
+                    </Badge>
                   </div>
+                </div>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <ScrollArea className="h-[500px]">
+                  <div className="space-y-1.5">
+                    {agentActivities.map((activity) => {
+                      const colors = getAgentColor(activity.agentType)
+                      return (
+                        <div
+                          key={activity.id}
+                          className="flex items-start gap-2 p-2 rounded-lg border border-neutral-800/50 bg-neutral-900/30 hover:bg-neutral-800/50 hover:border-neutral-700 transition-all"
+                        >
+                          <div className={`shrink-0 size-6 rounded-full ${colors.bg} flex items-center justify-center mt-0.5`}>
+                            <Bot className={`size-3 ${colors.text}`} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-xs font-medium ${colors.text}`}>{activity.agentName}</span>
+                              <span className={`size-1.5 rounded-full shrink-0 ${getStatusDot(activity.status)}`} />
+                            </div>
+                            <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">{activity.action}</p>
+                            <span className="text-[9px] text-slate-600">{formatRelativeTime(activity.timestamp)}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+            {/* ── CENTER PANEL: Project Overview + Tasks ─────────────────── */}
+            <div className="space-y-4">
+              {/* Quick Stats */}
+              <div className="grid grid-cols-3 gap-2">
+                <Card className="bg-[#0d1117] border-neutral-800 py-2">
+                  <CardContent className="flex items-center gap-2 px-3">
+                    <ListChecks className="size-4 text-amber-400" />
+                    <div>
+                      <p className="text-sm font-bold text-white">{selectedProject.tasks?.length ?? selectedProject._count?.tasks ?? 0}</p>
+                      <p className="text-[10px] text-slate-400">Tasks</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="bg-[#0d1117] border-neutral-800 py-2">
+                  <CardContent className="flex items-center gap-2 px-3">
+                    <Sparkles className="size-4 text-violet-400" />
+                    <div>
+                      <p className="text-sm font-bold text-white">{selectedProject.skills?.length ?? selectedProject._count?.skills ?? 0}</p>
+                      <p className="text-[10px] text-slate-400">Skills</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="bg-[#0d1117] border-neutral-800 py-2">
+                  <CardContent className="flex items-center gap-2 px-3">
+                    <Server className="size-4 text-cyan-400" />
+                    <div>
+                      <p className="text-sm font-bold text-white">{selectedProject.mcpServers?.length ?? selectedProject._count?.mcpServers ?? 0}</p>
+                      <p className="text-[10px] text-slate-400">MCP</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Project Info */}
+              <Card className="bg-[#0d1117] border-neutral-800 py-0">
+                <CardHeader className="pb-2 pt-3 px-4">
+                  <CardTitle className="text-xs text-white flex items-center gap-2">
+                    <FolderKanban className="size-3.5 text-rose-400" />
+                    Project Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-3 space-y-2">
+                  {selectedProject.category && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Category</span>
+                      <Badge variant="outline" className="text-[10px] h-4 text-rose-300 bg-rose-500/10 border-rose-500/20">{selectedProject.category}</Badge>
+                    </div>
+                  )}
+                  {selectedProject.dueDate && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Due Date</span>
+                      <span className="text-slate-300 flex items-center gap-1"><Calendar className="size-3" />{formatDate(selectedProject.dueDate)}</span>
+                    </div>
+                  )}
+                  {parseTechStack(selectedProject.techStack).length > 0 && (
+                    <div className="pt-1">
+                      <span className="text-[10px] text-slate-400 block mb-1">Tech Stack</span>
+                      <div className="flex flex-wrap gap-1">
+                        {parseTechStack(selectedProject.techStack).map((tech) => (
+                          <Badge key={tech} variant="outline" className="text-[9px] h-4 border-neutral-700 text-slate-300 bg-neutral-800/50">{tech}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            </TabsContent>
 
-            {/* ── Tasks Tab ── */}
-            <TabsContent value="tasks" className="space-y-4">
+              {/* Tasks */}
               <Card className="bg-[#0d1117] border-neutral-800 py-0">
-                <CardHeader className="pb-2 pt-4 px-4">
-                  <CardTitle className="text-sm text-white flex items-center gap-2">
-                    <ListChecks className="size-4 text-rose-400" />
+                <CardHeader className="pb-2 pt-3 px-4">
+                  <CardTitle className="text-xs text-white flex items-center gap-2">
+                    <ListChecks className="size-3.5 text-rose-400" />
                     Tasks
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="px-4 pb-4 space-y-3">
-                  {/* Add task form */}
+                <CardContent className="px-4 pb-3 space-y-2">
+                  {/* Add task */}
                   <div className="flex gap-2">
                     <Input
-                      placeholder="New task title..."
+                      placeholder="New task..."
                       value={newTaskTitle}
                       onChange={(e) => setNewTaskTitle(e.target.value)}
-                      className="bg-neutral-900 border-neutral-700 text-white flex-1 h-9 text-sm"
+                      className="bg-neutral-900 border-neutral-700 text-white flex-1 h-8 text-xs"
                       onKeyDown={(e) => { if (e.key === 'Enter') handleAddTask() }}
                     />
-                    <Button
-                      onClick={handleAddTask}
-                      disabled={!newTaskTitle.trim()}
-                      size="sm"
-                      className="bg-rose-600 hover:bg-rose-700 text-white gap-1 h-9"
-                    >
-                      <Plus className="size-3" />
-                      Add
+                    <Button onClick={handleAddTask} disabled={!newTaskTitle.trim()} size="sm" className="bg-rose-600 hover:bg-rose-700 text-white gap-1 h-8 text-xs">
+                      <Plus className="size-3" />Add
                     </Button>
                   </div>
-                  {newTaskTitle.trim() && (
-                    <Input
-                      placeholder="Description (optional)..."
-                      value={newTaskDesc}
-                      onChange={(e) => setNewTaskDesc(e.target.value)}
-                      className="bg-neutral-900 border-neutral-700 text-white h-9 text-sm"
-                    />
-                  )}
 
-                  {/* AI Generate Button */}
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleAiAnalyze}
-                      disabled={aiAnalyzing || !(selectedProject.description || selectedProject.requirements)}
-                      className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 gap-1.5 h-9 text-xs"
-                    >
-                      <Sparkles className="size-3" />
-                      {aiAnalyzing ? 'AI Generating...' : 'Generate Tasks with AI'}
-                    </Button>
-                    {aiAnalyzing && (
-                      <span className="text-xs text-violet-400 animate-pulse flex items-center gap-1">
-                        <Loader2 className="size-3 animate-spin" />
-                        AI is analyzing your project...
-                      </span>
-                    )}
-                    {aiTasksGenerated > 0 && !aiAnalyzing && (
-                      <span className="text-xs text-emerald-400">
-                        ✨ {aiTasksGenerated} tasks generated by AI
-                      </span>
-                    )}
-                    {aiError && (
-                      <span className="text-xs text-red-400">
-                        {aiError}
-                      </span>
-                    )}
-                  </div>
+                  {/* AI Generate */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAiAnalyze}
+                    disabled={aiAnalyzing || !(selectedProject.description || selectedProject.requirements)}
+                    className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 gap-1.5 h-7 text-[10px] w-full"
+                  >
+                    <Sparkles className="size-3" />
+                    {aiAnalyzing ? 'AI Generating...' : 'Generate Tasks with AI'}
+                  </Button>
+                  {aiTasksGenerated > 0 && !aiAnalyzing && (
+                    <span className="text-[10px] text-emerald-400 block">✨ {aiTasksGenerated} tasks generated by AI</span>
+                  )}
+                  {aiError && (
+                    <span className="text-[10px] text-red-400 block">{aiError}</span>
+                  )}
 
                   <Separator className="bg-neutral-800" />
 
-                  {/* Tasks list */}
+                  {/* Task list */}
                   {(!selectedProject.tasks || selectedProject.tasks.length === 0) ? (
-                    <div className="flex flex-col items-center py-8 text-slate-500">
-                      <ListChecks className="size-8 mb-2 opacity-50" />
-                      <p className="text-sm">No tasks yet</p>
+                    <div className="flex flex-col items-center py-4 text-slate-500">
+                      <ListChecks className="size-6 mb-1 opacity-50" />
+                      <p className="text-xs">No tasks yet</p>
                     </div>
                   ) : (
-                    <ScrollArea className="max-h-96">
-                      <div className="space-y-2">
+                    <ScrollArea className="max-h-64">
+                      <div className="space-y-1.5">
                         {selectedProject.tasks.map((task) => (
                           <div
                             key={task.id}
-                            className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-900/50 p-3 transition-all hover:border-neutral-700"
+                            className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900/50 p-2 transition-all hover:border-neutral-700"
                           >
                             <button
-                              className={`size-5 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                              className={`size-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
                                 task.status === 'done'
                                   ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
                                   : 'border-neutral-600 hover:border-rose-500/40'
                               }`}
                               onClick={() => handleToggleTask(task.id)}
                             >
-                              {task.status === 'done' && <CheckCircle2 className="size-3" />}
+                              {task.status === 'done' && <CheckCircle2 className="size-2.5" />}
                             </button>
                             <div className="min-w-0 flex-1">
-                              <p className={`text-sm ${task.status === 'done' ? 'text-slate-500 line-through' : 'text-white'}`}>
+                              <p className={`text-xs ${task.status === 'done' ? 'text-slate-500 line-through' : 'text-white'}`}>
                                 {task.title}
                               </p>
-                              {task.description && (
-                                <p className="text-xs text-slate-500 mt-0.5 truncate">{task.description}</p>
-                              )}
                             </div>
                             <Badge
                               variant="outline"
-                              className={`text-[9px] h-4 px-1.5 shrink-0 ${
+                              className={`text-[8px] h-3.5 px-1 shrink-0 ${
                                 task.status === 'todo'
                                   ? 'text-slate-400 border-neutral-700'
                                   : task.status === 'in_progress'
@@ -1551,225 +1804,239 @@ export default function ProjectsModule() {
                   )}
                 </CardContent>
               </Card>
-            </TabsContent>
 
-            {/* ── Skills Tab ── */}
-            <TabsContent value="skills" className="space-y-4">
+              {/* Automation Tools */}
               <Card className="bg-[#0d1117] border-neutral-800 py-0">
-                <CardHeader className="pb-2 pt-4 px-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm text-white flex items-center gap-2">
-                      <Sparkles className="size-4 text-rose-400" />
-                      Assigned Skills
-                    </CardTitle>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setAddSkillDialogOpen(true)}
-                      className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10 gap-1 h-7 text-xs"
-                    >
-                      <Plus className="size-3" />
-                      Add Skill
-                    </Button>
-                  </div>
+                <CardHeader className="pb-2 pt-3 px-4">
+                  <CardTitle className="text-xs text-white flex items-center gap-2">
+                    <Wrench className="size-3.5 text-rose-400" />
+                    Automation Tools
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="px-4 pb-4">
-                  {(!selectedProject.skills || selectedProject.skills.length === 0) ? (
-                    <div className="flex flex-col items-center py-8 text-slate-500">
-                      <Sparkles className="size-8 mb-2 opacity-50" />
-                      <p className="text-sm">No skills assigned</p>
-                      <p className="text-xs text-slate-600 mt-1">Add skills to give this project capabilities</p>
-                    </div>
-                  ) : (
-                    <ScrollArea className="max-h-96">
-                      <div className="space-y-2">
-                        {selectedProject.skills.map((skillAssignment) => (
-                          <div
-                            key={skillAssignment.id}
-                            className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/50 p-3 transition-all hover:border-neutral-700"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm text-white">
-                                {skillAssignment.skill?.name || `Skill ${skillAssignment.skillId}`}
-                              </p>
-                              {skillAssignment.skill?.description && (
-                                <p className="text-xs text-slate-500 mt-0.5 truncate">{skillAssignment.skill.description}</p>
-                              )}
-                              {skillAssignment.role && (
-                                <Badge variant="outline" className="text-[9px] h-4 mt-1 px-1.5 border-violet-500/30 text-violet-400 bg-violet-500/10">
-                                  {skillAssignment.role}
-                                </Badge>
-                              )}
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveSkill(skillAssignment.skillId)}
-                              className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 w-7 p-0 shrink-0"
-                            >
-                              <Trash2 className="size-3" />
-                            </Button>
-                          </div>
-                        ))}
+                <CardContent className="px-4 pb-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    {AUTOMATION_TOOLS.map((tool) => (
+                      <div
+                        key={tool.name}
+                        className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900/50 p-2 transition-all hover:border-rose-500/30 hover:bg-neutral-900/80 cursor-pointer group"
+                        onClick={() => window.open(tool.url, '_blank')}
+                      >
+                        <span className="text-lg">{tool.icon}</span>
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-medium text-slate-300 group-hover:text-rose-300 transition-colors block truncate">{tool.name}</span>
+                          <span className="text-[8px] text-slate-500 line-clamp-1">{tool.description}</span>
+                        </div>
                       </div>
-                    </ScrollArea>
-                  )}
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
 
-              {/* Add Skill Dialog */}
-              <Dialog open={addSkillDialogOpen} onOpenChange={setAddSkillDialogOpen}>
-                <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="text-rose-400">Add Skill</DialogTitle>
-                    <DialogDescription className="text-slate-400">Assign a skill to this project</DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-2">
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Skill</Label>
-                      <Select value={selectedSkillId} onValueChange={setSelectedSkillId}>
-                        <SelectTrigger className="bg-neutral-900 border-neutral-700 text-white">
-                          <SelectValue placeholder="Select a skill..." />
-                        </SelectTrigger>
-                        <SelectContent className="bg-neutral-900 border-neutral-700">
-                          {installedSkills
-                            .filter((s) => !(selectedProject.skills || []).some((ps) => ps.skillId === s.id))
-                            .map((skill) => (
-                              <SelectItem key={skill.id} value={skill.id} className="text-white focus:bg-neutral-800 focus:text-white">
-                                {skill.name}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Role (optional)</Label>
-                      <Input
-                        placeholder="e.g. primary, fallback..."
-                        value={newSkillRole}
-                        onChange={(e) => setNewSkillRole(e.target.value)}
-                        className="bg-neutral-900 border-neutral-700 text-white"
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setAddSkillDialogOpen(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
-                    <Button onClick={handleAddSkill} disabled={!selectedSkillId} className="bg-rose-600 hover:bg-rose-700 text-white">Add Skill</Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </TabsContent>
-
-            {/* ── MCP Servers Tab ── */}
-            <TabsContent value="mcp" className="space-y-4">
+              {/* Skills & MCP inline */}
               <Card className="bg-[#0d1117] border-neutral-800 py-0">
-                <CardHeader className="pb-2 pt-4 px-4">
+                <CardHeader className="pb-2 pt-3 px-4">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm text-white flex items-center gap-2">
-                      <Server className="size-4 text-rose-400" />
-                      Assigned MCP Servers
+                    <CardTitle className="text-xs text-white flex items-center gap-2">
+                      <Sparkles className="size-3.5 text-rose-400" />
+                      Skills & MCP Servers
                     </CardTitle>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setAddMcpDialogOpen(true)}
-                      className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10 gap-1 h-7 text-xs"
-                    >
-                      <Plus className="size-3" />
-                      Add MCP Server
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" onClick={() => setAddSkillDialogOpen(true)} className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10 h-6 text-[9px] px-2">
+                        <Plus className="size-2.5" />Skill
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setAddMcpDialogOpen(true)} className="border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 h-6 text-[9px] px-2">
+                        <Plus className="size-2.5" />MCP
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
-                <CardContent className="px-4 pb-4">
-                  {(!selectedProject.mcpServers || selectedProject.mcpServers.length === 0) ? (
-                    <div className="flex flex-col items-center py-8 text-slate-500">
-                      <Server className="size-8 mb-2 opacity-50" />
-                      <p className="text-sm">No MCP servers assigned</p>
-                      <p className="text-xs text-slate-600 mt-1">Add MCP servers to connect this project to external tools</p>
+                <CardContent className="px-4 pb-3 space-y-2">
+                  {/* Skills */}
+                  {selectedProject.skills && selectedProject.skills.length > 0 ? (
+                    <div className="space-y-1">
+                      {selectedProject.skills.map((sa) => (
+                        <div key={sa.id} className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-900/50 p-1.5">
+                          <div className="min-w-0 flex-1">
+                            <span className="text-[11px] text-white">{sa.skill?.name || `Skill ${sa.skillId}`}</span>
+                            {sa.role && <Badge variant="outline" className="text-[8px] h-3.5 ml-1 px-1 border-violet-500/30 text-violet-400 bg-violet-500/10">{sa.role}</Badge>}
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => handleRemoveSkill(sa.skillId)} className="text-red-400 hover:text-red-300 h-5 w-5 p-0 shrink-0">
+                            <Trash2 className="size-2.5" />
+                          </Button>
+                        </div>
+                      ))}
                     </div>
                   ) : (
-                    <ScrollArea className="max-h-96">
-                      <div className="space-y-2">
-                        {selectedProject.mcpServers.map((mcpAssignment) => (
-                          <div
-                            key={mcpAssignment.id}
-                            className="flex items-center justify-between rounded-lg border border-neutral-800 bg-neutral-900/50 p-3 transition-all hover:border-neutral-700"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm text-white">
-                                {mcpAssignment.mcpServer?.name || `MCP Server ${mcpAssignment.mcpServerId}`}
-                              </p>
-                              {mcpAssignment.mcpServer?.description && (
-                                <p className="text-xs text-slate-500 mt-0.5 truncate">{mcpAssignment.mcpServer.description}</p>
-                              )}
-                              {mcpAssignment.mcpServer?.url && (
-                                <p className="text-[10px] text-cyan-400/60 mt-0.5 truncate">{mcpAssignment.mcpServer.url}</p>
-                              )}
-                              {mcpAssignment.role && (
-                                <Badge variant="outline" className="text-[9px] h-4 mt-1 px-1.5 border-cyan-500/30 text-cyan-400 bg-cyan-500/10">
-                                  {mcpAssignment.role}
-                                </Badge>
-                              )}
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveMcp(mcpAssignment.mcpServerId)}
-                              className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 w-7 p-0 shrink-0"
-                            >
-                              <Trash2 className="size-3" />
-                            </Button>
+                    <p className="text-[10px] text-slate-500 italic">No skills assigned</p>
+                  )}
+
+                  <Separator className="bg-neutral-800" />
+
+                  {/* MCP Servers */}
+                  {selectedProject.mcpServers && selectedProject.mcpServers.length > 0 ? (
+                    <div className="space-y-1">
+                      {selectedProject.mcpServers.map((ma) => (
+                        <div key={ma.id} className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-900/50 p-1.5">
+                          <div className="min-w-0 flex-1">
+                            <span className="text-[11px] text-white">{ma.mcpServer?.name || `MCP ${ma.mcpServerId}`}</span>
+                            {ma.role && <Badge variant="outline" className="text-[8px] h-3.5 ml-1 px-1 border-cyan-500/30 text-cyan-400 bg-cyan-500/10">{ma.role}</Badge>}
                           </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
+                          <Button variant="ghost" size="sm" onClick={() => handleRemoveMcp(ma.mcpServerId)} className="text-red-400 hover:text-red-300 h-5 w-5 p-0 shrink-0">
+                            <Trash2 className="size-2.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-500 italic">No MCP servers assigned</p>
                   )}
                 </CardContent>
               </Card>
+            </div>
 
-              {/* Add MCP Server Dialog */}
-              <Dialog open={addMcpDialogOpen} onOpenChange={setAddMcpDialogOpen}>
-                <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="text-rose-400">Add MCP Server</DialogTitle>
-                    <DialogDescription className="text-slate-400">Connect an MCP server to this project</DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-2">
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">MCP Server</Label>
-                      <Select value={selectedMcpId} onValueChange={setSelectedMcpId}>
-                        <SelectTrigger className="bg-neutral-900 border-neutral-700 text-white">
-                          <SelectValue placeholder="Select an MCP server..." />
-                        </SelectTrigger>
-                        <SelectContent className="bg-neutral-900 border-neutral-700">
-                          {installedMcpServers
-                            .filter((m) => !(selectedProject.mcpServers || []).some((pm) => pm.mcpServerId === m.id))
-                            .map((mcp) => (
-                              <SelectItem key={mcp.id} value={mcp.id} className="text-white focus:bg-neutral-800 focus:text-white">
-                                {mcp.name}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Role (optional)</Label>
-                      <Input
-                        placeholder="e.g. primary, backup..."
-                        value={newMcpRole}
-                        onChange={(e) => setNewMcpRole(e.target.value)}
-                        className="bg-neutral-900 border-neutral-700 text-white"
-                      />
-                    </div>
+            {/* ── RIGHT PANEL: Code Explorer + Agent Chat ────────────────── */}
+            <Card className="bg-[#0d1117] border-neutral-800 py-0">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1 bg-neutral-900 rounded-lg border border-neutral-800 p-0.5">
+                    <button
+                      className={`px-3 py-1 rounded-md text-xs transition-colors ${detailTab === 'code' ? 'bg-rose-600/20 text-rose-400' : 'text-slate-400 hover:text-white'}`}
+                      onClick={() => setDetailTab('code')}
+                    >
+                      <FileCode className="size-3 inline mr-1" />
+                      Code
+                    </button>
+                    <button
+                      className={`px-3 py-1 rounded-md text-xs transition-colors ${detailTab === 'chat' ? 'bg-rose-600/20 text-rose-400' : 'text-slate-400 hover:text-white'}`}
+                      onClick={() => setDetailTab('chat')}
+                    >
+                      <MessageSquare className="size-3 inline mr-1" />
+                      Chat
+                    </button>
                   </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setAddMcpDialogOpen(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
-                    <Button onClick={handleAddMcp} disabled={!selectedMcpId} className="bg-rose-600 hover:bg-rose-700 text-white">Add Server</Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </TabsContent>
-          </Tabs>
+                </div>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                {detailTab === 'code' ? (
+                  /* ── Code Explorer ── */
+                  <ScrollArea className="h-[500px]">
+                    <div className="space-y-0.5">
+                      {renderFileTree(generateFileTree(selectedProject))}
+                    </div>
+                  </ScrollArea>
+                ) : (
+                  /* ── Agent Chat ── */
+                  <ScrollArea className="h-[500px]">
+                    <div className="space-y-3">
+                      {agentMessages.map((msg) => {
+                        const colors = getAgentColor(msg.fromType)
+                        return (
+                          <div key={msg.id} className="flex gap-2">
+                            <div className={`shrink-0 size-6 rounded-full ${colors.bg} flex items-center justify-center mt-0.5`}>
+                              <Bot className={`size-3 ${colors.text}`} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className={`text-xs font-medium ${colors.text}`}>{msg.from}</span>
+                                <span className="text-[9px] text-slate-600">{formatRelativeTime(msg.timestamp)}</span>
+                              </div>
+                              <div className={`rounded-lg ${colors.bg} border ${colors.border} p-2`}>
+                                <p className="text-xs text-slate-300 leading-relaxed">{msg.content}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </ScrollArea>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Add Skill Dialog */}
+          <Dialog open={addSkillDialogOpen} onOpenChange={setAddSkillDialogOpen}>
+            <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-rose-400">Add Skill</DialogTitle>
+                <DialogDescription className="text-slate-400">Assign a skill to this project</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label className="text-slate-300">Skill</Label>
+                  <Select value={selectedSkillId} onValueChange={setSelectedSkillId}>
+                    <SelectTrigger className="bg-neutral-900 border-neutral-700 text-white">
+                      <SelectValue placeholder="Select a skill..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-neutral-900 border-neutral-700">
+                      {installedSkills
+                        .filter((s) => !(selectedProject.skills || []).some((ps) => ps.skillId === s.id))
+                        .map((skill) => (
+                          <SelectItem key={skill.id} value={skill.id} className="text-white focus:bg-neutral-800 focus:text-white">
+                            {skill.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-slate-300">Role (optional)</Label>
+                  <Input
+                    placeholder="e.g. primary, fallback..."
+                    value={newSkillRole}
+                    onChange={(e) => setNewSkillRole(e.target.value)}
+                    className="bg-neutral-900 border-neutral-700 text-white"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAddSkillDialogOpen(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
+                <Button onClick={handleAddSkill} disabled={!selectedSkillId} className="bg-rose-600 hover:bg-rose-700 text-white">Add Skill</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Add MCP Server Dialog */}
+          <Dialog open={addMcpDialogOpen} onOpenChange={setAddMcpDialogOpen}>
+            <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-rose-400">Add MCP Server</DialogTitle>
+                <DialogDescription className="text-slate-400">Connect an MCP server to this project</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label className="text-slate-300">MCP Server</Label>
+                  <Select value={selectedMcpId} onValueChange={setSelectedMcpId}>
+                    <SelectTrigger className="bg-neutral-900 border-neutral-700 text-white">
+                      <SelectValue placeholder="Select an MCP server..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-neutral-900 border-neutral-700">
+                      {installedMcpServers
+                        .filter((m) => !(selectedProject.mcpServers || []).some((pm) => pm.mcpServerId === m.id))
+                        .map((mcp) => (
+                          <SelectItem key={mcp.id} value={mcp.id} className="text-white focus:bg-neutral-800 focus:text-white">
+                            {mcp.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-slate-300">Role (optional)</Label>
+                  <Input
+                    placeholder="e.g. primary, backup..."
+                    value={newMcpRole}
+                    onChange={(e) => setNewMcpRole(e.target.value)}
+                    className="bg-neutral-900 border-neutral-700 text-white"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAddMcpDialogOpen(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
+                <Button onClick={handleAddMcp} disabled={!selectedMcpId} className="bg-rose-600 hover:bg-rose-700 text-white">Add Server</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
         </div>
