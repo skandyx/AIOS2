@@ -49,6 +49,10 @@ import {
   RefreshCw,
   Globe,
   Github,
+  Upload,
+  Link2,
+  Unplug,
+  Zap,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -69,6 +73,7 @@ interface MCPSearchResult {
   command?: string
   args?: string
   source?: 'curated' | 'github' | 'web' | 'registry'
+  specialAction?: string
 }
 
 interface InstalledMCPServer {
@@ -179,23 +184,35 @@ function RegistryCard({
   isInstalled,
   isInstalling,
   onInstall,
+  githubConnected,
 }: {
   server: MCPSearchResult
   isInstalled: boolean
   isInstalling: boolean
   onInstall: (server: MCPSearchResult) => void
+  githubConnected?: boolean
 }) {
+  const isGithubMcp = server.specialAction === 'github-connect' || server.packageName?.includes('server-github')
+
   return (
     <Card className="border-neutral-800 bg-[#0d1117] backdrop-blur-sm transition-all hover:border-amber-500/30 hover:shadow-lg hover:shadow-amber-500/5">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-400/10 text-xl">
-              {CATEGORY_ICONS[server.category] || '📦'}
+            <div className={`flex h-10 w-10 items-center justify-center rounded-lg text-xl ${
+              isGithubMcp ? 'bg-emerald-400/10' : 'bg-amber-400/10'
+            }`}>
+              {isGithubMcp ? '🐙' : (CATEGORY_ICONS[server.category] || '📦')}
             </div>
             <div className="min-w-0">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <span className="truncate">{server.name}</span>
+                {isGithubMcp && (
+                  <Badge variant="outline" className="gap-1 text-[8px] border-amber-400/30 text-amber-400">
+                    <Zap className="h-2 w-2" />
+                    AIOS Integration
+                  </Badge>
+                )}
               </CardTitle>
               <CardDescription className="line-clamp-1 text-xs">
                 {server.fullName || 'Community'}
@@ -242,6 +259,20 @@ function RegistryCard({
               <CheckCircle2 className="h-2.5 w-2.5" />
               Installed
             </Badge>
+          ) : isGithubMcp && !githubConnected ? (
+            <Button
+              size="sm"
+              className="gap-1 bg-emerald-500 text-xs text-black hover:bg-emerald-400"
+              disabled={isInstalling}
+              onClick={() => onInstall(server)}
+            >
+              {isInstalling ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Link2 className="h-3 w-3" />
+              )}
+              Connect & Install
+            </Button>
           ) : (
             <Button
               size="sm"
@@ -272,6 +303,8 @@ function InstalledCard({
   onToggleRunning,
   onConfigure,
   onUninstall,
+  onGitHubAction,
+  githubConnected,
 }: {
   server: InstalledMCPServer
   isToggling: boolean
@@ -279,14 +312,22 @@ function InstalledCard({
   onToggleRunning: (id: string, running: boolean) => void
   onConfigure: (server: InstalledMCPServer) => void
   onUninstall: (server: InstalledMCPServer) => void
+  onGitHubAction?: (action: 'connect' | 'push') => void
+  githubConnected?: boolean
 }) {
+  const isGithubMcp = server.slug === 'github-mcp' || server.packageName?.includes('server-github')
+
   return (
-    <Card className="border-neutral-800 bg-[#0d1117] backdrop-blur-sm transition-all hover:border-amber-500/20">
+    <Card className={`border-neutral-800 bg-[#0d1117] backdrop-blur-sm transition-all ${
+      isGithubMcp ? 'hover:border-emerald-500/30' : 'hover:border-amber-500/20'
+    }`}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-400/10 text-xl">
-              {(server.icon as string) || CATEGORY_ICONS[server.category || ''] || '📦'}
+            <div className={`flex h-10 w-10 items-center justify-center rounded-lg text-xl ${
+              isGithubMcp ? 'bg-emerald-400/10' : 'bg-amber-400/10'
+            }`}>
+              {(server.icon as string) || (isGithubMcp ? '🐙' : CATEGORY_ICONS[server.category || ''] || '📦')}
             </div>
             <div className="min-w-0">
               <CardTitle className="flex items-center gap-2 text-sm">
@@ -297,11 +338,23 @@ function InstalledCard({
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                   </span>
                 )}
+                {isGithubMcp && (
+                  <Badge variant="outline" className="gap-1 text-[8px] border-amber-400/30 text-amber-400">
+                    <Zap className="h-2 w-2" />
+                    AIOS
+                  </Badge>
+                )}
               </CardTitle>
               <div className="flex items-center gap-2">
                 <CardDescription className="text-xs">
                   {server.author || 'Unknown'}
                 </CardDescription>
+                {isGithubMcp && githubConnected && (
+                  <Badge variant="outline" className="gap-1 text-[8px] text-emerald-400 border-emerald-400/30">
+                    <Github className="h-2 w-2" />
+                    Connected
+                  </Badge>
+                )}
               </div>
             </div>
           </div>
@@ -335,6 +388,39 @@ function InstalledCard({
             </Badge>
           )}
         </div>
+
+        {/* GitHub MCP: Show Connect/Push prompt if not connected */}
+        {isGithubMcp && !githubConnected && onGitHubAction && (
+          <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2">
+            <div className="flex items-center gap-2">
+              <Link2 className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+              <p className="text-[10px] text-amber-400 flex-1">Connect GitHub to enable push integration</p>
+              <Button
+                size="sm"
+                className="h-6 gap-1 bg-amber-500 text-black text-[10px] hover:bg-amber-400 shrink-0"
+                onClick={() => onGitHubAction('connect')}
+              >
+                <Github className="h-2.5 w-2.5" />
+                Connect
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* GitHub MCP: Show Push button if connected */}
+        {isGithubMcp && githubConnected && onGitHubAction && (
+          <div className="mt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full gap-1.5 text-[11px] border-emerald-400/30 text-emerald-400 hover:bg-emerald-400/10 hover:text-emerald-300"
+              onClick={() => onGitHubAction('push')}
+            >
+              <Upload className="h-3.5 w-3.5" />
+              Push Project to GitHub
+            </Button>
+          </div>
+        )}
 
         <Separator className="my-3 bg-neutral-800" />
 
@@ -823,6 +909,189 @@ function UninstallDialog({
   )
 }
 
+// ─── GitHub Connection Dialog ────────────────────────────────────────────────
+
+function GitHubConnectDialog({
+  open,
+  onOpenChange,
+  onConnect,
+  isConnecting,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  onConnect: (token: string, username: string) => void
+  isConnecting: boolean
+}) {
+  const [token, setToken] = useState('')
+  const [username, setUsername] = useState('')
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="border-neutral-800 bg-[#0d1117] backdrop-blur-md sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-amber-400">
+            <Github className="h-5 w-5" />
+            Connect GitHub
+          </DialogTitle>
+          <DialogDescription>
+            Enter your GitHub Personal Access Token to install and configure the GitHub MCP server. Your token will be stored securely.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+            <div className="flex items-center gap-2 text-xs text-amber-400">
+              <Zap className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                This will install the GitHub MCP server and configure your GitHub integration in one step.
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">GitHub Username</Label>
+            <Input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="border-neutral-800 bg-neutral-900/50 text-sm"
+              placeholder="your-username"
+              autoComplete="username"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Personal Access Token</Label>
+            <Input
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              className="border-neutral-800 bg-neutral-900/50 font-mono text-sm"
+              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+              type="password"
+              autoComplete="current-password"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Generate a token at GitHub Settings → Developer settings → Personal access tokens.
+              Required scopes: repo, read:org, workflow.
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" className="border-neutral-700">
+              Cancel
+            </Button>
+          </DialogClose>
+          <Button
+            className="gap-2 bg-amber-500 text-black hover:bg-amber-400"
+            onClick={() => onConnect(token, username)}
+            disabled={isConnecting || !token || !username}
+          >
+            {isConnecting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Github className="h-4 w-4" />
+            )}
+            {isConnecting ? 'Connecting...' : 'Connect & Install'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── GitHub Status Panel ─────────────────────────────────────────────────────
+
+function GitHubStatusPanel({
+  connected,
+  username,
+  testing,
+  onTest,
+  onDisconnect,
+  onPushToGitHub,
+}: {
+  connected: boolean
+  username: string | null
+  testing: boolean
+  onTest: () => void
+  onDisconnect: () => void
+  onPushToGitHub: () => void
+}) {
+  return (
+    <div className="rounded-lg border border-neutral-800 bg-neutral-900/30 p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Github className="h-4 w-4 text-amber-400" />
+          <span className="text-xs font-medium">GitHub Integration</span>
+        </div>
+        <Badge
+          variant="outline"
+          className={`gap-1 text-[9px] ${
+            connected
+              ? 'text-emerald-400 border-emerald-400/30'
+              : 'text-neutral-500 border-neutral-600'
+          }`}
+        >
+          {connected ? (
+            <>
+              <CheckCircle2 className="h-2.5 w-2.5" />
+              Connected
+            </>
+          ) : (
+            <>
+              <Unplug className="h-2.5 w-2.5" />
+              Not Connected
+            </>
+          )}
+        </Badge>
+      </div>
+
+      {connected && username && (
+        <p className="text-[11px] text-muted-foreground mb-2">
+          Signed in as <span className="text-foreground font-medium">@{username}</span>
+        </p>
+      )}
+
+      <div className="flex items-center gap-2">
+        {connected ? (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 text-[10px] text-muted-foreground hover:text-amber-400"
+              onClick={onTest}
+              disabled={testing}
+            >
+              {testing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              Test
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 hover:bg-emerald-400/10"
+              onClick={onPushToGitHub}
+            >
+              <Upload className="h-3 w-3" />
+              Push to GitHub
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 text-[10px] text-red-400 hover:text-red-300 hover:bg-red-400/10"
+              onClick={onDisconnect}
+            >
+              <Unplug className="h-3 w-3" />
+              Disconnect
+            </Button>
+          </>
+        ) : (
+          <p className="text-[10px] text-neutral-600">Configure to enable GitHub features</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function MCPModule() {
@@ -848,6 +1117,14 @@ export default function MCPModule() {
   const [isSaving, setIsSaving] = useState(false)
   const [isUninstalling, setIsUninstalling] = useState(false)
 
+  // GitHub MCP state
+  const [githubConnected, setGithubConnected] = useState(false)
+  const [githubUsername, setGithubUsername] = useState<string | null>(null)
+  const [githubConnectOpen, setGithubConnectOpen] = useState(false)
+  const [githubConnecting, setGithubConnecting] = useState(false)
+  const [githubTesting, setGithubTesting] = useState(false)
+  const [githubTestResult, setGithubTestResult] = useState<{ success: boolean; user?: { login: string; name: string; avatarUrl: string }; scopes?: string[]; error?: string } | null>(null)
+
   // ─── Fetch Installed Servers ──────────────────────────────────────────────
 
   const fetchInstalled = useCallback(async () => {
@@ -867,6 +1144,21 @@ export default function MCPModule() {
       setInstalledServers([])
     } finally {
       setInstalledLoading(false)
+    }
+  }, [])
+
+  // ─── Fetch GitHub MCP Status ──────────────────────────────────────────────
+
+  const fetchGithubStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/mcp/github')
+      if (res.ok) {
+        const data = await res.json()
+        setGithubConnected(data.connected)
+        setGithubUsername(data.username)
+      }
+    } catch {
+      // Silently fail
     }
   }, [])
 
@@ -898,7 +1190,8 @@ export default function MCPModule() {
   useEffect(() => {
     fetchInstalled()
     searchRegistry('')
-  }, [fetchInstalled, searchRegistry])
+    fetchGithubStatus()
+  }, [fetchInstalled, searchRegistry, fetchGithubStatus])
 
   // ─── Debounced Search ─────────────────────────────────────────────────────
 
@@ -926,8 +1219,83 @@ export default function MCPModule() {
   // ─── Install ──────────────────────────────────────────────────────────────
 
   const handleInstallClick = (server: MCPSearchResult) => {
+    // Special handling for GitHub MCP
+    if (server.specialAction === 'github-connect' || server.packageName?.includes('server-github')) {
+      if (githubConnected) {
+        // Already connected, install normally
+        setSelectedForInstall(server)
+        setInstallDialogOpen(true)
+      } else {
+        // Not connected, show GitHub connect dialog
+        setGithubConnectOpen(true)
+      }
+      return
+    }
     setSelectedForInstall(server)
     setInstallDialogOpen(true)
+  }
+
+  const handleGithubConnect = async (token: string, username: string) => {
+    setGithubConnecting(true)
+    try {
+      const res = await fetch('/api/mcp/github', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, username }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setGithubConnected(true)
+        setGithubUsername(data.username)
+        await fetchInstalled()
+        await searchRegistry(searchQuery)
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Unknown error' }))
+        setError(data.error || data.details || 'Failed to connect GitHub')
+      }
+    } catch {
+      setError('Failed to connect GitHub')
+    } finally {
+      setGithubConnecting(false)
+      setGithubConnectOpen(false)
+    }
+  }
+
+  const handleGithubTest = async () => {
+    setGithubTesting(true)
+    setGithubTestResult(null)
+    try {
+      const res = await fetch('/api/mcp/github/test', { method: 'POST' })
+      const data = await res.json()
+      setGithubTestResult(data)
+      if (!data.success) {
+        setGithubConnected(false)
+        setGithubUsername(null)
+      }
+    } catch {
+      setGithubTestResult({ success: false, error: 'Network error' })
+    } finally {
+      setGithubTesting(false)
+    }
+  }
+
+  const handleGithubDisconnect = async () => {
+    try {
+      await fetch('/api/github', { method: 'DELETE' })
+      setGithubConnected(false)
+      setGithubUsername(null)
+      setGithubTestResult(null)
+      await fetchGithubStatus()
+    } catch {
+      // Silently fail
+    }
+  }
+
+  const handlePushToGitHub = () => {
+    // Navigate to projects module by dispatching a custom event
+    // The ProjectsModule handles the push dialog
+    window.dispatchEvent(new CustomEvent('aios:navigate', { detail: { module: 'projects' } }))
+    window.dispatchEvent(new CustomEvent('aios:github-push', { detail: {} }))
   }
 
   const handleConfirmInstall = async () => {
@@ -1088,6 +1456,7 @@ export default function MCPModule() {
 
   const runningCount = installedServers.filter((s) => s.isRunning).length
   const enabledCount = installedServers.filter((s) => s.isEnabled).length
+  const githubMcpInstalled = installedServers.some((s) => s.slug === 'github-mcp')
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -1113,11 +1482,24 @@ export default function MCPModule() {
             <CheckCircle2 className="h-3 w-3" />
             {runningCount} running
           </Badge>
+          {githubMcpInstalled && (
+            <Badge
+              variant="outline"
+              className={`gap-1 ${
+                githubConnected
+                  ? 'border-emerald-400/30 text-emerald-400'
+                  : 'border-red-400/30 text-red-400'
+              }`}
+            >
+              <Github className="h-3 w-3" />
+              {githubConnected ? `@${githubUsername}` : 'GitHub: Setup Required'}
+            </Badge>
+          )}
           <Button
             variant="ghost"
             size="sm"
             className="h-7 w-7 p-0 text-muted-foreground hover:text-amber-400"
-            onClick={() => { fetchInstalled(); searchRegistry(searchQuery) }}
+            onClick={() => { fetchInstalled(); searchRegistry(searchQuery); fetchGithubStatus() }}
           >
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
@@ -1246,6 +1628,7 @@ export default function MCPModule() {
                             isInstalled={installedSlugs.has(slug)}
                             isInstalling={installingSlug === slug}
                             onInstall={handleInstallClick}
+                            githubConnected={githubConnected}
                           />
                         )
                       })}
@@ -1259,6 +1642,64 @@ export default function MCPModule() {
         <TabsContent value="installed" className="flex-1 min-h-0 overflow-hidden mt-0">
           <ScrollArea className="h-full">
             <div className="p-6">
+              {/* GitHub MCP Status Panel */}
+              {githubMcpInstalled && (
+                <div className="mb-4">
+                  <GitHubStatusPanel
+                    connected={githubConnected}
+                    username={githubUsername}
+                    testing={githubTesting}
+                    onTest={handleGithubTest}
+                    onDisconnect={handleGithubDisconnect}
+                    onPushToGitHub={handlePushToGitHub}
+                  />
+                  {githubTestResult && (
+                    <div className={`mt-2 rounded-lg border p-2 text-xs ${
+                      githubTestResult.success
+                        ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-400'
+                        : 'border-red-500/20 bg-red-500/5 text-red-400'
+                    }`}>
+                      {githubTestResult.success ? (
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                          <span>
+                            Connected as <strong>@{githubTestResult.user?.login}</strong>
+                            {githubTestResult.scopes && githubTestResult.scopes.length > 0 && (
+                              <span className="text-muted-foreground"> — Scopes: {githubTestResult.scopes.join(', ')}</span>
+                            )}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <XCircle className="h-3.5 w-3.5 shrink-0" />
+                          <span>{githubTestResult.error || 'Connection failed'}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {!githubConnected && (
+                    <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+                      <div className="flex items-center gap-3">
+                        <Link2 className="h-4 w-4 text-amber-400 shrink-0" />
+                        <div className="flex-1">
+                          <p className="text-xs text-amber-400 font-medium">Connect GitHub to enable push integration</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            The GitHub MCP server is installed but not configured. Connect your GitHub account to push projects directly.
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="gap-1 bg-amber-500 text-black text-xs hover:bg-amber-400 shrink-0"
+                          onClick={() => setGithubConnectOpen(true)}
+                        >
+                          <Github className="h-3 w-3" />
+                          Connect
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               {installedLoading ? (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {Array.from({ length: 3 }).map((_, i) => (
@@ -1310,6 +1751,11 @@ export default function MCPModule() {
                       onToggleRunning={handleToggleRunning}
                       onConfigure={handleConfigure}
                       onUninstall={handleUninstallClick}
+                      onGitHubAction={(action) => {
+                        if (action === 'connect') setGithubConnectOpen(true)
+                        if (action === 'push') handlePushToGitHub()
+                      }}
+                      githubConnected={githubConnected}
                     />
                   ))}
                 </div>
@@ -1342,6 +1788,13 @@ export default function MCPModule() {
         onOpenChange={setUninstallDialogOpen}
         onConfirm={handleConfirmUninstall}
         isUninstalling={isUninstalling}
+      />
+
+      <GitHubConnectDialog
+        open={githubConnectOpen}
+        onOpenChange={setGithubConnectOpen}
+        onConnect={handleGithubConnect}
+        isConnecting={githubConnecting}
       />
     </div>
   )

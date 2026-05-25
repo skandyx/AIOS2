@@ -32,12 +32,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Progress } from '@/components/ui/progress'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Plus,
   FolderKanban,
   Calendar,
-  Clock,
   CheckCircle2,
   PauseCircle,
   Archive,
@@ -63,8 +61,12 @@ import {
   FileJson,
   FileText,
   MessageSquare,
-  Send,
   Users,
+  Github,
+  Upload,
+  Globe,
+  GitBranch,
+  RefreshCw,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -79,6 +81,7 @@ interface TaskData {
   description?: string
   status: 'todo' | 'in_progress' | 'done'
   assignedTo?: string
+  assignee?: { id: string; name: string; type: string; avatar?: string }
   createdAt: string
 }
 
@@ -111,6 +114,10 @@ interface ProjectData {
   dueDate?: string | null
   createdAt: string
   updatedAt: string
+  githubRepoUrl?: string | null
+  githubBranch?: string | null
+  githubStatus?: string | null
+  githubPushedAt?: string | null
   _count?: {
     tasks: number
     skills: number
@@ -140,7 +147,7 @@ interface AgentActivity {
   agentType: string
   action: string
   timestamp: string
-  status: 'active' | 'idle' | 'busy' | 'error'
+  status: 'active' | 'idle' | 'busy' | 'error' | 'completed'
 }
 
 interface AgentMessage {
@@ -149,6 +156,7 @@ interface AgentMessage {
   fromType: string
   content: string
   timestamp: string
+  avatar?: string
 }
 
 interface FileTreeNode {
@@ -285,6 +293,12 @@ function ProjectCard({
           {project.category && (
             <Badge variant="outline" className="text-[10px] h-5 text-rose-300 bg-rose-500/10 border-rose-500/20">
               {project.category}
+            </Badge>
+          )}
+          {project.githubStatus === 'pushed' && (
+            <Badge variant="outline" className="text-[10px] h-5 text-emerald-300 bg-emerald-500/10 border-emerald-500/20 gap-1">
+              <Github className="size-2.5" />
+              Pushed
             </Badge>
           )}
         </div>
@@ -647,6 +661,29 @@ export default function ProjectsModule() {
   const [detailTab, setDetailTab] = useState<'code' | 'chat'>('code')
   const socketRef = useRef<ReturnType<typeof io> | null>(null)
 
+  // ── Orchestration state ──
+  const [orchestrating, setOrchestrating] = useState(false)
+  const [orchestrationResult, setOrchestrationResult] = useState<{ tasksCreated: number; agentCount: number } | null>(null)
+
+  // ── GitHub state ──
+  const [githubConnected, setGithubConnected] = useState(false)
+  const [githubUsername, setGithubUsername] = useState<string | null>(null)
+  const [githubSetupDialogOpen, setGithubSetupDialogOpen] = useState(false)
+  const [githubPushDialogOpen, setGithubPushDialogOpen] = useState(false)
+  const [githubToken, setGithubToken] = useState('')
+  const [githubSetupUsername, setGithubSetupUsername] = useState('')
+  const [githubSettingUp, setGithubSettingUp] = useState(false)
+  const [githubSetupError, setGithubSetupError] = useState<string | null>(null)
+  const [pushRepoName, setPushRepoName] = useState('')
+  const [pushPrivate, setPushPrivate] = useState(false)
+  const [pushDescription, setPushDescription] = useState('')
+  const [pushing, setPushing] = useState(false)
+  const [pushError, setPushError] = useState<string | null>(null)
+  const [pushResult, setPushResult] = useState<{ repoUrl: string; filesPushed: number } | null>(null)
+
+  // ── Discussion generation state ──
+  const [generatingDiscussion, setGeneratingDiscussion] = useState(false)
+
   // Fetch projects
   const fetchProjects = useCallback(async () => {
     try {
@@ -690,6 +727,20 @@ export default function ProjectsModule() {
     }
   }, [])
 
+  // Check GitHub connection
+  const checkGithub = useCallback(async () => {
+    try {
+      const res = await fetch('/api/github')
+      if (res.ok) {
+        const data = await res.json()
+        setGithubConnected(data.connected === true)
+        setGithubUsername(data.username || null)
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
   useEffect(() => {
     fetchProjects()
   }, [fetchProjects])
@@ -697,47 +748,10 @@ export default function ProjectsModule() {
   useEffect(() => {
     fetchInstalledSkills()
     fetchInstalledMcp()
-  }, [fetchInstalledSkills, fetchInstalledMcp])
+    checkGithub()
+  }, [fetchInstalledSkills, fetchInstalledMcp, checkGithub])
 
-  // ─── Agent Simulation Data ──────────────────────────────────────────────────
-
-  const AGENT_NAMES = [
-    { name: 'Atlas', type: 'coordinator' },
-    { name: 'CodePilot', type: 'developer' },
-    { name: 'Shield', type: 'security' },
-    { name: 'DataForge', type: 'data' },
-    { name: 'TestRunner', type: 'qa' },
-  ]
-
-  const AGENT_ACTIONS = [
-    'Analyzing project requirements...',
-    'Generating component scaffold...',
-    'Running security audit...',
-    'Optimizing database queries...',
-    'Writing unit tests...',
-    'Reviewing code changes...',
-    'Updating API endpoints...',
-    'Syncing with MCP server...',
-    'Processing task queue...',
-    'Building deployment pipeline...',
-    'Checking dependencies...',
-    'Formatting and linting code...',
-  ]
-
-  const AGENT_CHAT_MESSAGES = [
-    { from: 'Atlas', fromType: 'coordinator', content: 'I\'ve reviewed the project requirements. We should prioritize the API layer first.' },
-    { from: 'CodePilot', fromType: 'developer', content: 'Agreed. I\'ll start scaffolding the routes and middleware. Should be ready in a few minutes.' },
-    { from: 'Shield', fromType: 'security', content: 'Make sure we add input validation on all endpoints. I found a potential XSS vector in the spec.' },
-    { from: 'DataForge', fromType: 'data', content: 'The schema looks good. I\'m optimizing the indexes for the query patterns we identified.' },
-    { from: 'TestRunner', fromType: 'qa', content: 'I\'ve set up the test framework. Running initial smoke tests now.' },
-    { from: 'Atlas', fromType: 'coordinator', content: 'Good progress everyone. Let\'s sync on the component architecture after the API is stable.' },
-    { from: 'CodePilot', fromType: 'developer', content: 'Just pushed the auth module. Uses JWT with refresh token rotation as discussed.' },
-    { from: 'Shield', fromType: 'security', content: 'Auth module looks solid. I\'ll run a penetration test on it next.' },
-    { from: 'DataForge', fromType: 'data', content: 'Migration scripts are ready. Should we seed the dev database with test data?' },
-    { from: 'TestRunner', fromType: 'qa', content: 'Coverage is at 78% and climbing. I added integration tests for the new endpoints.' },
-    { from: 'Atlas', fromType: 'coordinator', content: 'Excellent work. Let\'s target 90% coverage before we merge to main.' },
-    { from: 'CodePilot', fromType: 'developer', content: 'Working on the dashboard UI now. Using the design tokens from the spec.' },
-  ]
+  // ─── File Tree Generation ───────────────────────────────────────────────────
 
   const generateFileTree = useCallback((project: ProjectData): FileTreeNode[] => {
     const category = project.category || 'Web App'
@@ -856,12 +870,12 @@ export default function ProjectsModule() {
     }
   }, [])
 
-  // ─── WebSocket + Agent Simulation Effects ────────────────────────────────────
+  // ─── WebSocket + Real-time Agent Effects ──────────────────────────────────
 
   useEffect(() => {
     if (view !== 'detail' || !selectedProject) return
 
-    // Connect to WebSocket
+    // Connect to WebSocket for real-time updates
     const socket = io('/?XTransformPort=3003', {
       transports: ['websocket'],
       reconnection: true,
@@ -871,10 +885,6 @@ export default function ProjectsModule() {
 
     socketRef.current = socket
 
-    socket.on('connect', () => {
-      // Connected to agent service
-    })
-
     socket.on('agent:message', (msg: AgentMessage) => {
       setAgentMessages((prev) => [msg, ...prev].slice(0, 50))
     })
@@ -883,56 +893,59 @@ export default function ProjectsModule() {
       setAgentActivities((prev) => [activity, ...prev].slice(0, 30))
     })
 
-    // Seed initial activities
-    const initialActivities: AgentActivity[] = AGENT_NAMES.map((agent, i) => ({
-      id: `init-${i}`,
-      agentName: agent.name,
-      agentType: agent.type,
-      action: AGENT_ACTIONS[Math.floor(Math.random() * AGENT_ACTIONS.length)],
-      timestamp: new Date(Date.now() - Math.random() * 300000).toISOString(),
-      status: (['active', 'idle', 'busy'] as const)[Math.floor(Math.random() * 3)],
-    }))
-    setAgentActivities(initialActivities)
-
-    // Seed initial chat messages
-    const initialMessages: AgentMessage[] = AGENT_CHAT_MESSAGES.slice(0, 4).map((msg, i) => ({
-      ...msg,
-      id: `init-msg-${i}`,
-      timestamp: new Date(Date.now() - (4 - i) * 120000).toISOString(),
-    }))
-    setAgentMessages(initialMessages)
-
-    // Simulate agent activities every 3-5 seconds
-    const activityInterval = setInterval(() => {
-      const agent = AGENT_NAMES[Math.floor(Math.random() * AGENT_NAMES.length)]
-      const statuses: Array<'active' | 'idle' | 'busy'> = ['active', 'idle', 'busy']
-      const newActivity: AgentActivity = {
-        id: `act-${Date.now()}`,
-        agentName: agent.name,
-        agentType: agent.type,
-        action: AGENT_ACTIONS[Math.floor(Math.random() * AGENT_ACTIONS.length)],
-        timestamp: new Date().toISOString(),
-        status: statuses[Math.floor(Math.random() * statuses.length)],
+    // Fetch orchestration status to seed real agent data
+    const fetchOrchestrationStatus = async () => {
+      try {
+        const res = await fetch(`/api/projects/${selectedProject.id}/orchestrate`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.agentUtilization && Array.isArray(data.agentUtilization)) {
+            const activities: AgentActivity[] = data.agentUtilization.map(
+              (agent: { agentId: string; agentName: string; agentType: string; taskCount: number }, i: number) => ({
+                id: `orch-${agent.agentId}-${i}`,
+                agentName: agent.agentName,
+                agentType: agent.agentType,
+                action: `Working on ${agent.taskCount} task${agent.taskCount !== 1 ? 's' : ''}`,
+                timestamp: new Date().toISOString(),
+                status: agent.taskCount > 0 ? 'active' as const : 'idle' as const,
+              })
+            )
+            setAgentActivities(activities)
+          }
+        }
+      } catch {
+        // ignore
       }
-      setAgentActivities((prev) => [newActivity, ...prev].slice(0, 30))
-    }, 3000 + Math.random() * 2000)
+    }
 
-    // Simulate agent chat messages every 8-12 seconds
-    const chatInterval = setInterval(() => {
-      const msg = AGENT_CHAT_MESSAGES[Math.floor(Math.random() * AGENT_CHAT_MESSAGES.length)]
-      const newMsg: AgentMessage = {
-        id: `msg-${Date.now()}`,
-        from: msg.from,
-        fromType: msg.fromType,
-        content: msg.content,
-        timestamp: new Date().toISOString(),
+    // Fetch existing discussions for this project
+    const fetchDiscussions = async () => {
+      try {
+        const res = await fetch(`/api/agent-discussions?projectId=${selectedProject.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.messages && data.messages.length > 0) {
+            const msgs: AgentMessage[] = data.messages.map(
+              (m: { agentId: string; agentName: string; agentType: string; content: string; timestamp: string }, i: number) => ({
+                id: `disc-${m.agentId}-${i}`,
+                from: m.agentName,
+                fromType: m.agentType,
+                content: m.content,
+                timestamp: m.timestamp,
+              })
+            )
+            setAgentMessages(msgs)
+          }
+        }
+      } catch {
+        // ignore
       }
-      setAgentMessages((prev) => [newMsg, ...prev].slice(0, 50))
-    }, 8000 + Math.random() * 4000)
+    }
+
+    fetchOrchestrationStatus()
+    fetchDiscussions()
 
     return () => {
-      clearInterval(activityInterval)
-      clearInterval(chatInterval)
       socket.disconnect()
       socketRef.current = null
     }
@@ -956,6 +969,10 @@ export default function ProjectsModule() {
       case 'security': return { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', dot: 'bg-red-400' }
       case 'data': return { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30', dot: 'bg-amber-400' }
       case 'qa': return { bg: 'bg-violet-500/20', text: 'text-violet-400', border: 'border-violet-500/30', dot: 'bg-violet-400' }
+      case 'research': return { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', dot: 'bg-blue-400' }
+      case 'system': return { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30', dot: 'bg-orange-400' }
+      case 'reasoning': return { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30', dot: 'bg-purple-400' }
+      case 'planning': return { bg: 'bg-teal-500/20', text: 'text-teal-400', border: 'border-teal-500/30', dot: 'bg-teal-400' }
       default: return { bg: 'bg-slate-500/20', text: 'text-slate-400', border: 'border-slate-500/30', dot: 'bg-slate-400' }
     }
   }
@@ -965,7 +982,26 @@ export default function ProjectsModule() {
       case 'active': return 'bg-emerald-400'
       case 'busy': return 'bg-amber-400'
       case 'error': return 'bg-red-400'
+      case 'completed': return 'bg-emerald-400'
       default: return 'bg-slate-500'
+    }
+  }
+
+  // Agent avatar emoji by type
+  const getAgentAvatar = (type: string) => {
+    switch (type) {
+      case 'coordinator': return '🎯'
+      case 'developer': return '💻'
+      case 'security': return '🛡️'
+      case 'data': return '📊'
+      case 'qa': return '🧪'
+      case 'research': return '🔬'
+      case 'system': return '⚙️'
+      case 'reasoning': return '🧠'
+      case 'planning': return '📋'
+      case 'workflow': return '🔄'
+      case 'monitoring': return '📡'
+      default: return '🤖'
     }
   }
 
@@ -1016,6 +1052,9 @@ export default function ProjectsModule() {
     setSelectedProject(project)
     setView('detail')
     setEditingProject(false)
+    setOrchestrationResult(null)
+    setPushResult(null)
+    setPushError(null)
 
     // Fetch full detail
     try {
@@ -1032,7 +1071,6 @@ export default function ProjectsModule() {
   // Create project - auto-open detail view and show hint for AI generation
   const handleProjectCreated = (project: ProjectData) => {
     setProjects((prev) => [project, ...prev])
-    // Auto-open the project detail view
     handleSelectProject(project)
   }
 
@@ -1203,6 +1241,186 @@ export default function ProjectsModule() {
     }
   }
 
+  // ── Orchestration ──
+  const handleOrchestrate = async () => {
+    if (!selectedProject) return
+    setOrchestrating(true)
+    setOrchestrationResult(null)
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.id}/orchestrate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ includeDiscussion: true, simulateWork: false }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        const plan = data.plan
+        const uniqueAgents = new Set(plan.assignments?.map((a: { agentId: string }) => a.agentId) || [])
+        setOrchestrationResult({
+          tasksCreated: plan.tasksCreated || 0,
+          agentCount: uniqueAgents.size,
+        })
+
+        // Add orchestration events to agent activity
+        if (plan.assignments) {
+          const newActivities: AgentActivity[] = plan.assignments.map(
+            (a: { agentId: string; agentName: string; agentType: string; taskTitle: string }, i: number) => ({
+              id: `orch-assign-${a.agentId}-${i}`,
+              agentName: a.agentName,
+              agentType: a.agentType,
+              action: `Assigned: ${a.taskTitle}`,
+              timestamp: new Date().toISOString(),
+              status: 'active' as const,
+            })
+          )
+          setAgentActivities((prev) => [...newActivities, ...prev].slice(0, 30))
+        }
+
+        // Load discussion messages from orchestration result
+        if (data.discussion && data.discussion.length > 0) {
+          const msgs: AgentMessage[] = data.discussion.map(
+            (m: { agentId: string; agentName: string; agentType: string; message: string }, i: number) => ({
+              id: `orch-disc-${m.agentId}-${i}`,
+              from: m.agentName,
+              fromType: m.agentType,
+              content: m.message,
+              timestamp: new Date().toISOString(),
+            })
+          )
+          setAgentMessages(msgs)
+        }
+
+        // Refresh the project detail to get updated tasks with assignments
+        const detailRes = await fetch(`/api/projects/${selectedProject.id}`)
+        if (detailRes.ok) {
+          const detail = await detailRes.json()
+          setSelectedProject(detail)
+          setProjects((prev) => prev.map((p) => (p.id === detail.id ? detail : p)))
+        }
+      } else {
+        setAiError(data.error || 'Orchestration failed')
+      }
+    } catch {
+      setAiError('Failed to connect to orchestration service')
+    } finally {
+      setOrchestrating(false)
+    }
+  }
+
+  // ── Generate Discussion ──
+  const handleGenerateDiscussion = async () => {
+    if (!selectedProject) return
+    setGeneratingDiscussion(true)
+    try {
+      const res = await fetch('/api/agent-discussions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: selectedProject.id }),
+      })
+      const data = await res.json()
+      if (data.success && data.messages) {
+        const msgs: AgentMessage[] = data.messages.map(
+          (m: { agentId: string; agentName: string; agentType: string; content: string; timestamp: string }, i: number) => ({
+            id: `disc-${m.agentId}-${i}-${Date.now()}`,
+            from: m.agentName,
+            fromType: m.agentType,
+            content: m.content,
+            timestamp: m.timestamp,
+          })
+        )
+        setAgentMessages(msgs)
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setGeneratingDiscussion(false)
+    }
+  }
+
+  // ── GitHub Setup ──
+  const handleGithubSetup = async () => {
+    if (!githubToken.trim() || !githubSetupUsername.trim()) return
+    setGithubSettingUp(true)
+    setGithubSetupError(null)
+    try {
+      const res = await fetch('/api/github', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: githubToken.trim(), username: githubSetupUsername.trim() }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setGithubConnected(true)
+        setGithubUsername(data.username || githubSetupUsername.trim())
+        setGithubSetupDialogOpen(false)
+        setGithubToken('')
+        setGithubSetupUsername('')
+      } else {
+        setGithubSetupError(data.error || data.details || 'Invalid token or username')
+      }
+    } catch {
+      setGithubSetupError('Failed to connect to GitHub API')
+    } finally {
+      setGithubSettingUp(false)
+    }
+  }
+
+  // ── GitHub Push ──
+  const handleGithubPush = async () => {
+    if (!selectedProject) return
+    setPushing(true)
+    setPushError(null)
+    setPushResult(null)
+    try {
+      const res = await fetch('/api/github/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: selectedProject.id,
+          repoName: pushRepoName.trim() || undefined,
+          private: pushPrivate,
+          description: pushDescription.trim() || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setPushResult({
+          repoUrl: data.repoUrl,
+          filesPushed: data.successCount || data.pushedFiles?.length || 0,
+        })
+        // Update project with github info
+        const updated = {
+          ...selectedProject,
+          githubRepoUrl: data.repoUrl,
+          githubStatus: 'pushed',
+        }
+        setSelectedProject(updated)
+        setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+      } else {
+        setPushError(data.error || 'Failed to push to GitHub')
+      }
+    } catch {
+      setPushError('Failed to connect to GitHub push service')
+    } finally {
+      setPushing(false)
+    }
+  }
+
+  // Open GitHub push dialog
+  const openGithubPush = () => {
+    if (!selectedProject) return
+    if (!githubConnected) {
+      setGithubSetupDialogOpen(true)
+      return
+    }
+    setPushRepoName(selectedProject.name.toLowerCase().replace(/[^a-z0-9]/g, '-'))
+    setPushDescription(selectedProject.description || '')
+    setPushPrivate(false)
+    setPushError(null)
+    setPushResult(null)
+    setGithubPushDialogOpen(true)
+  }
+
   // Add skill
   const handleAddSkill = async () => {
     if (!selectedProject || !selectedSkillId) return
@@ -1320,6 +1538,41 @@ export default function ProjectsModule() {
   const activeProjects = projects.filter((p) => p.status === 'in_progress').length
   const completedProjects = projects.filter((p) => p.status === 'completed').length
   const planningProjects = projects.filter((p) => p.status === 'planning').length
+
+  // GitHub status badge
+  const getGithubBadge = () => {
+    if (selectedProject?.githubStatus === 'pushed' && selectedProject?.githubRepoUrl) {
+      return (
+        <a
+          href={selectedProject.githubRepoUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 transition-colors"
+        >
+          <Github className="size-3" />
+          <Globe className="size-2.5" />
+          Pushed
+        </a>
+      )
+    }
+    if (selectedProject?.githubStatus === 'error') {
+      return (
+        <span className="flex items-center gap-1 text-[10px] text-red-400">
+          <Github className="size-3" />
+          Error
+        </span>
+      )
+    }
+    if (githubConnected) {
+      return (
+        <span className="flex items-center gap-1 text-[10px] text-cyan-400">
+          <Github className="size-3" />
+          Linked
+        </span>
+      )
+    }
+    return null
+  }
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -1460,12 +1713,59 @@ export default function ProjectsModule() {
                           {selectedProject.category}
                         </Badge>
                       )}
+                      {/* Orchestration status indicator */}
+                      {orchestrating && (
+                        <Badge className="text-[10px] h-5 gap-1 bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">
+                          <Loader2 className="size-2.5 animate-spin" />
+                          Orchestrating...
+                        </Badge>
+                      )}
+                      {orchestrationResult && !orchestrating && (
+                        <Badge className="text-[10px] h-5 gap-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                          ✅ Orchestrated
+                        </Badge>
+                      )}
+                      {/* GitHub status badge */}
+                      {getGithubBadge()}
                     </div>
                     <p className="text-xs text-slate-400 mt-0.5 truncate">{selectedProject.description || 'No description'}</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  {/* Orchestrate button */}
+                  <Button
+                    size="sm"
+                    onClick={handleOrchestrate}
+                    disabled={orchestrating}
+                    className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5 h-7 text-xs"
+                  >
+                    {orchestrating ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : (
+                      <Rocket className="size-3" />
+                    )}
+                    {orchestrating ? 'Orchestrating...' : '🚀 Orchestrate'}
+                  </Button>
+
+                  {/* Push to GitHub button */}
+                  {(selectedProject.status === 'completed' || selectedProject.status === 'in_progress') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={openGithubPush}
+                      disabled={pushing}
+                      className="border-neutral-700 text-slate-300 hover:text-white gap-1.5 h-7 text-xs"
+                    >
+                      {pushing ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        <Upload className="size-3" />
+                      )}
+                      Push to GitHub
+                    </Button>
+                  )}
+
                   <Select
                     value={selectedProject.status}
                     onValueChange={(v) => handleStatusChangeRequest(v as ProjectStatus)}
@@ -1501,11 +1801,27 @@ export default function ProjectsModule() {
                 </div>
               )}
 
+              {/* Orchestration loading overlay */}
+              {orchestrating && (
+                <div className="mt-3 flex items-center gap-2 text-xs text-amber-400 animate-pulse bg-amber-500/5 rounded-lg p-2 border border-amber-500/20">
+                  <Loader2 className="size-3 animate-spin" />
+                  <span>🤖 Orchestrating project... Agents are analyzing and dividing tasks</span>
+                </div>
+              )}
+
               {/* AI indicator */}
               {aiAnalyzing && (
                 <div className="mt-3 flex items-center gap-2 text-xs text-violet-400 animate-pulse bg-violet-500/5 rounded-lg p-2 border border-violet-500/20">
                   <Loader2 className="size-3 animate-spin" />
                   <span>AI is analyzing your project and generating tasks...</span>
+                </div>
+              )}
+
+              {/* Orchestration result */}
+              {orchestrationResult && !orchestrating && (
+                <div className="mt-3 flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/5 rounded-lg p-2 border border-emerald-500/20">
+                  <CheckCircle2 className="size-3" />
+                  <span>✨ Orchestration complete: {orchestrationResult.tasksCreated} tasks created, {orchestrationResult.agentCount} agents assigned</span>
                 </div>
               )}
             </CardContent>
@@ -1620,27 +1936,39 @@ export default function ProjectsModule() {
               <CardContent className="px-4 pb-4">
                 <ScrollArea className="h-[500px]">
                   <div className="space-y-1.5">
-                    {agentActivities.map((activity) => {
-                      const colors = getAgentColor(activity.agentType)
-                      return (
-                        <div
-                          key={activity.id}
-                          className="flex items-start gap-2 p-2 rounded-lg border border-neutral-800/50 bg-neutral-900/30 hover:bg-neutral-800/50 hover:border-neutral-700 transition-all"
-                        >
-                          <div className={`shrink-0 size-6 rounded-full ${colors.bg} flex items-center justify-center mt-0.5`}>
-                            <Bot className={`size-3 ${colors.text}`} />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className={`text-xs font-medium ${colors.text}`}>{activity.agentName}</span>
-                              <span className={`size-1.5 rounded-full shrink-0 ${getStatusDot(activity.status)}`} />
+                    {agentActivities.length === 0 ? (
+                      <div className="flex flex-col items-center py-8 text-slate-500">
+                        <Bot className="size-8 mb-2 opacity-30" />
+                        <p className="text-xs">No agent activity yet</p>
+                        <p className="text-[10px] text-slate-600">Run orchestration to assign agents</p>
+                      </div>
+                    ) : (
+                      agentActivities.map((activity) => {
+                        const colors = getAgentColor(activity.agentType)
+                        const avatar = getAgentAvatar(activity.agentType)
+                        return (
+                          <div
+                            key={activity.id}
+                            className="flex items-start gap-2 p-2 rounded-lg border border-neutral-800/50 bg-neutral-900/30 hover:bg-neutral-800/50 hover:border-neutral-700 transition-all"
+                          >
+                            <div className={`shrink-0 size-6 rounded-full ${colors.bg} flex items-center justify-center mt-0.5 text-xs`}>
+                              {avatar}
                             </div>
-                            <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">{activity.action}</p>
-                            <span className="text-[9px] text-slate-600">{formatRelativeTime(activity.timestamp)}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-xs font-medium ${colors.text}`}>{activity.agentName}</span>
+                                <Badge variant="outline" className={`text-[7px] h-3 px-1 ${colors.text} ${colors.bg} ${colors.border}`}>
+                                  {activity.agentType}
+                                </Badge>
+                                <span className={`size-1.5 rounded-full shrink-0 ${getStatusDot(activity.status)}`} />
+                              </div>
+                              <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">{activity.action}</p>
+                              <span className="text-[9px] text-slate-600">{formatRelativeTime(activity.timestamp)}</span>
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })}
+                        )
+                      })
+                    )}
                   </div>
                 </ScrollArea>
               </CardContent>
@@ -1710,6 +2038,21 @@ export default function ProjectsModule() {
                       </div>
                     </div>
                   )}
+                  {/* GitHub link if pushed */}
+                  {selectedProject.githubRepoUrl && (
+                    <div className="pt-1">
+                      <a
+                        href={selectedProject.githubRepoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+                      >
+                        <GitBranch className="size-3" />
+                        {selectedProject.githubRepoUrl.replace('https://github.com/', '')}
+                        <ExternalLink className="size-2.5" />
+                      </a>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1736,17 +2079,31 @@ export default function ProjectsModule() {
                     </Button>
                   </div>
 
-                  {/* AI Generate */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAiAnalyze}
-                    disabled={aiAnalyzing || !(selectedProject.description || selectedProject.requirements)}
-                    className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 gap-1.5 h-7 text-[10px] w-full"
-                  >
-                    <Sparkles className="size-3" />
-                    {aiAnalyzing ? 'AI Generating...' : 'Generate Tasks with AI'}
-                  </Button>
+                  {/* Action buttons row */}
+                  <div className="flex gap-2">
+                    {/* AI Generate */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAiAnalyze}
+                      disabled={aiAnalyzing || !(selectedProject.description || selectedProject.requirements)}
+                      className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 gap-1.5 h-7 text-[10px] flex-1"
+                    >
+                      <Sparkles className="size-3" />
+                      {aiAnalyzing ? 'Generating...' : 'AI Generate'}
+                    </Button>
+                    {/* Orchestrate (compact) */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleOrchestrate}
+                      disabled={orchestrating}
+                      className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 gap-1.5 h-7 text-[10px] flex-1"
+                    >
+                      <Rocket className="size-3" />
+                      {orchestrating ? 'Working...' : 'Orchestrate'}
+                    </Button>
+                  </div>
                   {aiTasksGenerated > 0 && !aiAnalyzing && (
                     <span className="text-[10px] text-emerald-400 block">✨ {aiTasksGenerated} tasks generated by AI</span>
                   )}
@@ -1761,44 +2118,61 @@ export default function ProjectsModule() {
                     <div className="flex flex-col items-center py-4 text-slate-500">
                       <ListChecks className="size-6 mb-1 opacity-50" />
                       <p className="text-xs">No tasks yet</p>
+                      <p className="text-[10px] text-slate-600">Use Orchestrate or AI Generate to create tasks</p>
                     </div>
                   ) : (
                     <ScrollArea className="max-h-64">
                       <div className="space-y-1.5">
-                        {selectedProject.tasks.map((task) => (
-                          <div
-                            key={task.id}
-                            className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900/50 p-2 transition-all hover:border-neutral-700"
-                          >
-                            <button
-                              className={`size-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
-                                task.status === 'done'
-                                  ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
-                                  : 'border-neutral-600 hover:border-rose-500/40'
-                              }`}
-                              onClick={() => handleToggleTask(task.id)}
+                        {selectedProject.tasks.map((task) => {
+                          const assigneeColors = task.assignee ? getAgentColor(task.assignee.type) : null
+                          const assigneeAvatar = task.assignee ? getAgentAvatar(task.assignee.type) : null
+                          return (
+                            <div
+                              key={task.id}
+                              className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900/50 p-2 transition-all hover:border-neutral-700"
                             >
-                              {task.status === 'done' && <CheckCircle2 className="size-2.5" />}
-                            </button>
-                            <div className="min-w-0 flex-1">
-                              <p className={`text-xs ${task.status === 'done' ? 'text-slate-500 line-through' : 'text-white'}`}>
-                                {task.title}
-                              </p>
+                              <button
+                                className={`size-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                                  task.status === 'done'
+                                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                                    : 'border-neutral-600 hover:border-rose-500/40'
+                                }`}
+                                onClick={() => handleToggleTask(task.id)}
+                              >
+                                {task.status === 'done' && <CheckCircle2 className="size-2.5" />}
+                              </button>
+                              <div className="min-w-0 flex-1">
+                                <p className={`text-xs ${task.status === 'done' ? 'text-slate-500 line-through' : 'text-white'}`}>
+                                  {task.title}
+                                </p>
+                                {/* Agent assignment display */}
+                                {task.assignee && (
+                                  <div className="flex items-center gap-1 mt-0.5">
+                                    <span className="text-[9px]">{assigneeAvatar}</span>
+                                    <span className={`text-[9px] ${assigneeColors?.text || 'text-slate-400'}`}>
+                                      {task.assignee.name}
+                                    </span>
+                                    <Badge variant="outline" className={`text-[7px] h-3 px-0.5 ${assigneeColors?.text || ''} ${assigneeColors?.bg || ''} ${assigneeColors?.border || ''}`}>
+                                      {task.assignee.type}
+                                    </Badge>
+                                  </div>
+                                )}
+                              </div>
+                              <Badge
+                                variant="outline"
+                                className={`text-[8px] h-3.5 px-1 shrink-0 ${
+                                  task.status === 'todo'
+                                    ? 'text-slate-400 border-neutral-700'
+                                    : task.status === 'in_progress'
+                                      ? 'text-amber-400 border-amber-500/30 bg-amber-500/10'
+                                      : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
+                                }`}
+                              >
+                                {task.status === 'todo' ? 'To Do' : task.status === 'in_progress' ? 'In Progress' : 'Done'}
+                              </Badge>
                             </div>
-                            <Badge
-                              variant="outline"
-                              className={`text-[8px] h-3.5 px-1 shrink-0 ${
-                                task.status === 'todo'
-                                  ? 'text-slate-400 border-neutral-700'
-                                  : task.status === 'in_progress'
-                                    ? 'text-amber-400 border-amber-500/30 bg-amber-500/10'
-                                    : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
-                              }`}
-                            >
-                              {task.status === 'todo' ? 'To Do' : task.status === 'in_progress' ? 'In Progress' : 'Done'}
-                            </Badge>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     </ScrollArea>
                   )}
@@ -1914,6 +2288,22 @@ export default function ProjectsModule() {
                       Chat
                     </button>
                   </div>
+                  {detailTab === 'chat' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGenerateDiscussion}
+                      disabled={generatingDiscussion}
+                      className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 gap-1 h-6 text-[9px] px-2"
+                    >
+                      {generatingDiscussion ? (
+                        <Loader2 className="size-2.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-2.5" />
+                      )}
+                      Generate Discussion
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent className="px-4 pb-4">
@@ -1925,34 +2315,215 @@ export default function ProjectsModule() {
                     </div>
                   </ScrollArea>
                 ) : (
-                  /* ── Agent Chat ── */
+                  /* ── Agent Discussion / Chat ── */
                   <ScrollArea className="h-[500px]">
                     <div className="space-y-3">
-                      {agentMessages.map((msg) => {
-                        const colors = getAgentColor(msg.fromType)
-                        return (
-                          <div key={msg.id} className="flex gap-2">
-                            <div className={`shrink-0 size-6 rounded-full ${colors.bg} flex items-center justify-center mt-0.5`}>
-                              <Bot className={`size-3 ${colors.text}`} />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <span className={`text-xs font-medium ${colors.text}`}>{msg.from}</span>
-                                <span className="text-[9px] text-slate-600">{formatRelativeTime(msg.timestamp)}</span>
+                      {agentMessages.length === 0 ? (
+                        <div className="flex flex-col items-center py-8 text-slate-500">
+                          <MessageSquare className="size-8 mb-2 opacity-30" />
+                          <p className="text-xs">No agent discussions yet</p>
+                          <p className="text-[10px] text-slate-600 mt-1">Run orchestration or click &quot;Generate Discussion&quot;</p>
+                        </div>
+                      ) : (
+                        agentMessages.map((msg) => {
+                          const colors = getAgentColor(msg.fromType)
+                          const avatar = getAgentAvatar(msg.fromType)
+                          return (
+                            <div key={msg.id} className="flex gap-2">
+                              <div className={`shrink-0 size-6 rounded-full ${colors.bg} flex items-center justify-center mt-0.5 text-xs`}>
+                                {avatar}
                               </div>
-                              <div className={`rounded-lg ${colors.bg} border ${colors.border} p-2`}>
-                                <p className="text-xs text-slate-300 leading-relaxed">{msg.content}</p>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <span className={`text-xs font-medium ${colors.text}`}>{msg.from}</span>
+                                  <Badge variant="outline" className={`text-[7px] h-3 px-0.5 ${colors.text} ${colors.bg} ${colors.border}`}>
+                                    {msg.fromType}
+                                  </Badge>
+                                  <span className="text-[9px] text-slate-600">{formatRelativeTime(msg.timestamp)}</span>
+                                </div>
+                                <div className={`rounded-lg ${colors.bg} border ${colors.border} p-2`}>
+                                  <p className="text-xs text-slate-300 leading-relaxed">{msg.content}</p>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        )
-                      })}
+                          )
+                        })
+                      )}
                     </div>
                   </ScrollArea>
                 )}
               </CardContent>
             </Card>
           </div>
+
+          {/* ── GitHub Setup Dialog ── */}
+          <Dialog open={githubSetupDialogOpen} onOpenChange={setGithubSetupDialogOpen}>
+            <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-rose-400 flex items-center gap-2">
+                  <Github className="size-5" />
+                  Connect GitHub
+                </DialogTitle>
+                <DialogDescription className="text-slate-400">
+                  Configure your GitHub integration to push projects to repositories
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label className="text-slate-300">Personal Access Token</Label>
+                  <Input
+                    type="password"
+                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                    value={githubToken}
+                    onChange={(e) => setGithubToken(e.target.value)}
+                    className="bg-neutral-900 border-neutral-700 text-white"
+                  />
+                  <p className="text-[10px] text-slate-500">Needs repo scope. Create one at Settings → Developer settings → Personal access tokens</p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-slate-300">GitHub Username</Label>
+                  <Input
+                    placeholder="your-username"
+                    value={githubSetupUsername}
+                    onChange={(e) => setGithubSetupUsername(e.target.value)}
+                    className="bg-neutral-900 border-neutral-700 text-white"
+                  />
+                </div>
+                {githubSetupError && (
+                  <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/5 rounded-lg p-2 border border-red-500/20">
+                    <AlertCircle className="size-3 shrink-0" />
+                    {githubSetupError}
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setGithubSetupDialogOpen(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
+                <Button
+                  onClick={handleGithubSetup}
+                  disabled={githubSettingUp || !githubToken.trim() || !githubSetupUsername.trim()}
+                  className="bg-rose-600 hover:bg-rose-700 text-white"
+                >
+                  {githubSettingUp ? 'Verifying...' : 'Connect GitHub'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* ── GitHub Push Dialog ── */}
+          <Dialog open={githubPushDialogOpen} onOpenChange={setGithubPushDialogOpen}>
+            <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-rose-400 flex items-center gap-2">
+                  <Upload className="size-5" />
+                  Push to GitHub
+                </DialogTitle>
+                <DialogDescription className="text-slate-400">
+                  Push your project files to a GitHub repository
+                </DialogDescription>
+              </DialogHeader>
+              {pushResult ? (
+                <div className="space-y-3 py-4">
+                  <div className="flex items-center gap-2 text-emerald-400 text-sm">
+                    <CheckCircle2 className="size-5" />
+                    Successfully pushed!
+                  </div>
+                  <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-3 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Files pushed</span>
+                      <span className="text-white font-medium">{pushResult.filesPushed}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Repository</span>
+                      <a
+                        href={pushResult.repoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
+                      >
+                        {pushResult.repoUrl.replace('https://github.com/', '')}
+                        <ExternalLink className="size-2.5" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4 py-2">
+                  <div className="flex items-center gap-2 text-xs text-slate-400 bg-neutral-900 rounded-lg p-2 border border-neutral-800">
+                    <Github className="size-4 text-cyan-400" />
+                    Connected as <span className="text-white font-medium">{githubUsername}</span>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-slate-300">Repository Name</Label>
+                    <Input
+                      placeholder="my-project"
+                      value={pushRepoName}
+                      onChange={(e) => setPushRepoName(e.target.value)}
+                      className="bg-neutral-900 border-neutral-700 text-white"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-slate-300">Description</Label>
+                    <Textarea
+                      placeholder="Project description..."
+                      value={pushDescription}
+                      onChange={(e) => setPushDescription(e.target.value)}
+                      className="bg-neutral-900 border-neutral-700 text-white min-h-16"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-slate-300 text-xs">Repository Visibility</Label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className={`px-3 py-1 rounded-md text-xs transition-colors ${!pushPrivate ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-white border border-neutral-700'}`}
+                        onClick={() => setPushPrivate(false)}
+                      >
+                        Public
+                      </button>
+                      <button
+                        className={`px-3 py-1 rounded-md text-xs transition-colors ${pushPrivate ? 'bg-amber-600/20 text-amber-400 border border-amber-500/30' : 'text-slate-400 hover:text-white border border-neutral-700'}`}
+                        onClick={() => setPushPrivate(true)}
+                      >
+                        Private
+                      </button>
+                    </div>
+                  </div>
+                  {pushError && (
+                    <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/5 rounded-lg p-2 border border-red-500/20">
+                      <AlertCircle className="size-3 shrink-0" />
+                      {pushError}
+                    </div>
+                  )}
+                </div>
+              )}
+              <DialogFooter>
+                {pushResult ? (
+                  <div className="flex gap-2 w-full">
+                    <Button variant="outline" onClick={() => setGithubPushDialogOpen(false)} className="border-neutral-700 text-slate-300 flex-1">Close</Button>
+                    <a
+                      href={pushResult.repoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white h-9 px-4 text-sm font-medium transition-colors"
+                    >
+                      <Globe className="size-3.5" />
+                      Open on GitHub
+                    </a>
+                  </div>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={() => setGithubPushDialogOpen(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
+                    <Button
+                      onClick={handleGithubPush}
+                      disabled={pushing || !pushRepoName.trim()}
+                      className="bg-rose-600 hover:bg-rose-700 text-white"
+                    >
+                      {pushing ? 'Pushing...' : 'Push to GitHub'}
+                    </Button>
+                  </>
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Add Skill Dialog */}
           <Dialog open={addSkillDialogOpen} onOpenChange={setAddSkillDialogOpen}>

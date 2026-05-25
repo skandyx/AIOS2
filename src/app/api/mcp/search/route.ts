@@ -19,7 +19,7 @@ const CURATED_MCP_SERVERS = [
   {
     name: 'GitHub MCP',
     fullName: 'modelcontextprotocol/servers',
-    description: 'GitHub integration MCP server',
+    description: 'GitHub integration MCP server - manage repos, issues, PRs, code reviews, and push projects directly from AIOS',
     url: 'https://github.com/modelcontextprotocol/servers',
     stars: 30000,
     language: 'TypeScript',
@@ -27,7 +27,8 @@ const CURATED_MCP_SERVERS = [
     transportType: 'stdio',
     packageName: '@modelcontextprotocol/server-github',
     command: 'npx',
-    args: '["@modelcontextprotocol/server-github"]',
+    args: '["-y","@modelcontextprotocol/server-github"]',
+    specialAction: 'github-connect',
   },
   {
     name: 'PostgreSQL MCP',
