@@ -2,17 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { generateAgentDiscussion, ensureDefaultAgents, type TaskAssignment } from '@/lib/orchestrator'
 
-// ─── In-memory discussion cache ──────────────────────────────────────────────
-// Maps projectId → AgentDiscussionMessage[]
-const discussionCache = new Map<string, Array<{
-  agentId: string
-  agentName: string
-  agentType: string
-  content: string
-  timestamp: string
-}>>()
-
 // GET /api/agent-discussions?projectId=xxx - List discussions for a project
+// Reads persisted discussions from the database
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -37,18 +28,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Check cache first
-    const cached = discussionCache.get(projectId)
-    if (cached) {
-      return NextResponse.json({
-        projectId,
-        projectName: project.name,
-        messages: cached,
-        total: cached.length,
-      })
-    }
+    // Fetch persisted discussions from the database
+    const discussions = await db.agentDiscussion.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'asc' },
+    })
 
-    // No cached discussion - check if there are tasks with agents assigned
+    // Also get task-agent assignments for context
     const tasks = await db.task.findMany({
       where: { projectId },
       include: {
@@ -58,7 +44,7 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Return task-agent assignments even without a discussion
+    // Return task-agent assignments
     const assignments = tasks
       .filter((t) => t.assignee)
       .map((t) => ({
@@ -70,12 +56,23 @@ export async function GET(request: NextRequest) {
         agentType: t.assignee!.type,
       }))
 
+    // Map DB records to the expected message format
+    const messages = discussions.map((d) => ({
+      agentId: d.agentId || '',
+      agentName: d.agentName,
+      agentType: d.agentType,
+      content: d.content,
+      timestamp: d.createdAt.toISOString(),
+      round: d.round,
+      type: d.type,
+    }))
+
     return NextResponse.json({
       projectId,
       projectName: project.name,
-      messages: [],
+      messages,
       assignments,
-      total: 0,
+      total: messages.length,
     })
   } catch (error) {
     console.error('Get agent discussions error:', error)
@@ -87,6 +84,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/agent-discussions - Generate new discussion for a project
+// The discussion is persisted to DB by generateAgentDiscussion itself
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -151,11 +149,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate the discussion
+    // Generate the discussion (persists to DB internally)
     const discussion = await generateAgentDiscussion(projectId, taskAssignments)
 
-    // Cache the discussion
-    discussionCache.set(projectId, discussion)
+    // No longer need in-memory cache - discussions are persisted to DB
 
     return NextResponse.json({
       success: true,

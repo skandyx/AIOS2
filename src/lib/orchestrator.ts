@@ -6,6 +6,9 @@
  * - Assigns each task to the appropriate agent based on task type
  * - Simulates realistic agent discussions about the project
  * - Simulates agent work with progress updates
+ * - Tracks orchestrator status through each stage
+ * - Persists agent instructions and discussions to the database
+ * - Generates project documentation after orchestration completes
  */
 
 import { db } from '@/lib/db'
@@ -110,6 +113,49 @@ function extractJsonFromResponse(text: string): string {
   }
 
   return text.trim()
+}
+
+// ─── Helper: Generate AI instruction for an agent-task pair ──────────────────
+
+async function generateAgentInstruction(
+  agentType: string,
+  agentName: string,
+  taskTitle: string,
+  taskDescription: string,
+  taskType: string,
+  projectName: string
+): Promise<string> {
+  const rolePrompt = AGENT_ROLE_PROMPTS[agentType] || AGENT_ROLE_PROMPTS[DEFAULT_AGENT_TYPE]
+
+  const systemPrompt = `${rolePrompt}
+
+You are generating a specific instruction (consigne) for ${agentName} to work on a task. Write a clear, actionable instruction that this agent should follow to complete their assigned task. Focus on what the agent should do based on their specific role and expertise.
+
+Return ONLY the instruction text, no preamble, no markdown formatting. Keep it to 2-4 sentences.`
+
+  const userMessage = `Project: ${projectName}
+Task: ${taskTitle}
+Task Description: ${taskDescription}
+Task Type: ${taskType}
+Assigned Agent: ${agentName} (${agentType})
+
+Generate a specific instruction for this agent to follow when working on this task.`
+
+  try {
+    const completion = await chatCompletion({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      temperature: 0.6,
+      maxTokens: 200,
+    })
+    return completion.content.trim()
+  } catch (error) {
+    console.error('Failed to generate agent instruction via AI:', error)
+    // Fallback: generate a simple instruction based on role
+    return `As ${agentName}, complete the "${taskTitle}" task. Focus on ${agentType}-specific aspects and ensure quality deliverables.`
+  }
 }
 
 // ─── Ensure Default Agents Exist ─────────────────────────────────────────────
@@ -326,91 +372,189 @@ Generate a detailed task breakdown covering all phases from planning to deployme
 // ─── Main: Orchestrate Project ───────────────────────────────────────────────
 
 export async function orchestrateProject(projectId: string): Promise<OrchestrationPlan> {
-  // 1. Fetch project
-  const project = await db.project.findUnique({
-    where: { id: projectId },
-    include: {
-      tasks: {
-        orderBy: { createdAt: 'desc' },
-        include: {
-          assignee: {
-            select: { id: true, name: true, type: true, avatar: true },
-          },
-        },
-      },
-    },
-  })
-
-  if (!project) {
-    throw new Error(`Project not found: ${projectId}`)
-  }
-
-  // 2. Ensure default agents exist
-  await ensureDefaultAgents()
-
-  // 3. Generate tasks using AI
-  const taskDefinitions = await generateProjectTasks(projectId, project)
-
-  // 4. Get userId for task creation
-  const userId = await getDefaultUserId()
-
-  // 5. Create tasks and assign to agents
-  const assignments: TaskAssignment[] = []
-
-  for (const taskDef of taskDefinitions) {
-    // Create the task
-    const task = await db.task.create({
-      data: {
-        title: taskDef.title,
-        description: taskDef.description,
-        status: 'pending',
-        priority: taskDef.priority || 'medium',
-        type: taskDef.type || 'development',
-        projectId,
-        creatorId: userId,
-        metadata: JSON.stringify({
-          source: 'orchestration',
-          generatedAt: new Date().toISOString(),
-        }),
-      },
-    })
-
-    // Assign to the appropriate agent
-    const agentAssignment = await assignTaskToAgent(taskDef.type)
-
-    if (agentAssignment.agentId) {
-      await db.task.update({
-        where: { id: task.id },
-        data: { assigneeId: agentAssignment.agentId },
-      })
-    }
-
-    assignments.push({
-      taskId: task.id,
-      taskTitle: taskDef.title,
-      taskType: taskDef.type,
-      taskPriority: taskDef.priority,
-      agentId: agentAssignment.agentId,
-      agentName: agentAssignment.agentName,
-      agentType: agentAssignment.agentType,
-    })
-  }
-
-  // 6. Update project status to in_progress
+  // Set status to analyzing at the start
   await db.project.update({
     where: { id: projectId },
     data: {
-      status: 'in_progress',
-      startedAt: new Date(),
+      orchestratorStatus: 'analyzing',
+      orchestratorStartedAt: new Date(),
     },
   })
 
-  return {
-    projectId,
-    projectName: project.name,
-    status: 'in_progress',
-    tasksCreated: assignments.length,
-    assignments,
+  try {
+    // 1. Fetch project
+    const project = await db.project.findUnique({
+      where: { id: projectId },
+      include: {
+        tasks: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            assignee: {
+              select: { id: true, name: true, type: true, avatar: true },
+            },
+          },
+        },
+      },
+    })
+
+    if (!project) {
+      await db.project.update({
+        where: { id: projectId },
+        data: { orchestratorStatus: 'failed' },
+      })
+      throw new Error(`Project not found: ${projectId}`)
+    }
+
+    // 2. Ensure default agents exist
+    await ensureDefaultAgents()
+
+    // 3. Generate tasks using AI
+    const taskDefinitions = await generateProjectTasks(projectId, project)
+
+    // After tasks generated: status = assigning
+    await db.project.update({
+      where: { id: projectId },
+      data: { orchestratorStatus: 'assigning' },
+    })
+
+    // 4. Get userId for task creation
+    const userId = await getDefaultUserId()
+
+    // 5. Create tasks and assign to agents
+    const assignments: TaskAssignment[] = []
+
+    for (const taskDef of taskDefinitions) {
+      // Create the task
+      const task = await db.task.create({
+        data: {
+          title: taskDef.title,
+          description: taskDef.description,
+          status: 'pending',
+          priority: taskDef.priority || 'medium',
+          type: taskDef.type || 'development',
+          projectId,
+          creatorId: userId,
+          metadata: JSON.stringify({
+            source: 'orchestration',
+            generatedAt: new Date().toISOString(),
+          }),
+        },
+      })
+
+      // Assign to the appropriate agent
+      const agentAssignment = await assignTaskToAgent(taskDef.type)
+
+      if (agentAssignment.agentId) {
+        await db.task.update({
+          where: { id: task.id },
+          data: { assigneeId: agentAssignment.agentId },
+        })
+      }
+
+      assignments.push({
+        taskId: task.id,
+        taskTitle: taskDef.title,
+        taskType: taskDef.type,
+        taskPriority: taskDef.priority,
+        agentId: agentAssignment.agentId,
+        agentName: agentAssignment.agentName,
+        agentType: agentAssignment.agentType,
+      })
+    }
+
+    // After agents assigned: status = discussing
+    await db.project.update({
+      where: { id: projectId },
+      data: { orchestratorStatus: 'discussing' },
+    })
+
+    // 6. Generate agent instructions as AgentActivity records
+    for (const assignment of assignments) {
+      if (assignment.agentId && assignment.agentName && assignment.agentType) {
+        try {
+          const instructionText = await generateAgentInstruction(
+            assignment.agentType,
+            assignment.agentName,
+            assignment.taskTitle,
+            taskDefinitions.find((t) => t.title === assignment.taskTitle)?.description || '',
+            assignment.taskType,
+            project.name
+          )
+
+          await db.agentActivity.create({
+            data: {
+              agentId: assignment.agentId,
+              agentName: assignment.agentName,
+              agentType: assignment.agentType,
+              projectId,
+              taskId: assignment.taskId,
+              action: `Instruction: ${instructionText}`,
+              type: 'instruction',
+              status: 'active',
+              metadata: JSON.stringify({
+                taskTitle: assignment.taskTitle,
+                taskType: assignment.taskType,
+                instruction: instructionText,
+              }),
+            },
+          })
+        } catch (error) {
+          console.error(`Failed to create instruction activity for task ${assignment.taskId}:`, error)
+          // Non-fatal: continue without instruction
+        }
+      }
+    }
+
+    // 7. Generate agent discussion (now persists to DB internally)
+    let discussion: AgentDiscussionMessage[] | undefined
+    try {
+      discussion = await generateAgentDiscussion(projectId, assignments)
+    } catch (error) {
+      console.error('Failed to generate agent discussion:', error)
+      // Non-fatal: continue without discussion
+    }
+
+    // After discussion generated: status = working
+    await db.project.update({
+      where: { id: projectId },
+      data: {
+        orchestratorStatus: 'working',
+        status: 'in_progress',
+        startedAt: new Date(),
+      },
+    })
+
+    // 8. Fire-and-forget: generate project documentation
+    generateProjectDocumentation(projectId).catch((err) => {
+      console.error(`Documentation generation failed for project ${projectId}:`, err)
+    })
+
+    // On completion: status = completed
+    await db.project.update({
+      where: { id: projectId },
+      data: {
+        orchestratorStatus: 'completed',
+        orchestratorCompletedAt: new Date(),
+      },
+    })
+
+    return {
+      projectId,
+      projectName: project.name,
+      status: 'in_progress',
+      tasksCreated: assignments.length,
+      assignments,
+      discussion,
+    }
+  } catch (error) {
+    // On error: status = failed
+    await db.project.update({
+      where: { id: projectId },
+      data: { orchestratorStatus: 'failed' },
+    }).catch(() => {
+      // Ignore update errors during error handling
+    })
+    throw error
   }
 }
 
@@ -484,6 +628,8 @@ ${previousMessages ? `Previous Discussion:\n${previousMessages}\n\nRespond to th
 
 Important: Keep your response to 2-4 sentences. Be specific and actionable. Do not repeat what others have said.`
 
+      let messageContent: string
+
       try {
         const completion = await chatCompletion({
           messages: [{ role: 'system', content: systemPrompt }],
@@ -491,22 +637,40 @@ Important: Keep your response to 2-4 sentences. Be specific and actionable. Do n
           maxTokens: 300,
         })
 
-        discussionMessages.push({
-          agentId: agent.id,
-          agentName: agent.name,
-          agentType: agent.type,
-          content: completion.content.trim(),
-          timestamp: new Date().toISOString(),
-        })
+        messageContent = completion.content.trim()
       } catch (error) {
         console.error(`Failed to generate discussion for agent ${agent.name}:`, error)
-        discussionMessages.push({
-          agentId: agent.id,
-          agentName: agent.name,
-          agentType: agent.type,
-          content: `I'm ready to contribute to this project with my ${agent.type} capabilities.`,
-          timestamp: new Date().toISOString(),
+        messageContent = `I'm ready to contribute to this project with my ${agent.type} capabilities.`
+      }
+
+      const timestamp = new Date().toISOString()
+
+      const msg: AgentDiscussionMessage = {
+        agentId: agent.id,
+        agentName: agent.name,
+        agentType: agent.type,
+        content: messageContent,
+        timestamp,
+      }
+
+      discussionMessages.push(msg)
+
+      // Persist each message to the database as it's generated
+      try {
+        await db.agentDiscussion.create({
+          data: {
+            projectId,
+            agentId: agent.id,
+            agentName: agent.name,
+            agentType: agent.type,
+            content: messageContent,
+            round: round + 1,
+            type: 'discussion',
+          },
         })
+      } catch (dbError) {
+        console.error(`Failed to persist discussion message for agent ${agent.name}:`, dbError)
+        // Non-fatal: the in-memory message is still returned
       }
     }
   }
@@ -662,5 +826,213 @@ export async function getOrchestrationStatus(projectId: string): Promise<{
     inProgressTasks,
     pendingTasks,
     agentUtilization,
+  }
+}
+
+// ─── Generate Project Documentation ─────────────────────────────────────────
+
+export async function generateProjectDocumentation(projectId: string): Promise<{
+  files: Array<{ path: string; filename: string }>
+}> {
+  // 1. Fetch the project with all tasks and discussions
+  const project = await db.project.findUnique({
+    where: { id: projectId },
+    include: {
+      tasks: {
+        orderBy: { createdAt: 'asc' },
+        include: {
+          assignee: {
+            select: { id: true, name: true, type: true, avatar: true },
+          },
+        },
+      },
+      discussions: {
+        orderBy: { createdAt: 'asc' },
+      },
+      activities: {
+        where: { type: 'instruction' },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+  })
+
+  if (!project) {
+    throw new Error(`Project not found: ${projectId}`)
+  }
+
+  // 2. Build context for AI documentation generation
+  const tasksSummary = project.tasks
+    .map((t, i) => `${i + 1}. [${t.type}/${t.priority}] ${t.title} - ${t.status}${t.assignee ? ` (assigned to ${t.assignee.name})` : ''}`)
+    .join('\n')
+
+  const discussionsSummary = project.discussions
+    .map((d) => `${d.agentName} (${d.agentType}): ${d.content}`)
+    .join('\n')
+
+  const instructionsSummary = project.activities
+    .map((a) => `${a.agentName}: ${a.action}`)
+    .join('\n')
+
+  let techStackDisplay = project.techStack || ''
+  if (techStackDisplay) {
+    try {
+      const parsed = JSON.parse(techStackDisplay)
+      if (Array.isArray(parsed)) {
+        techStackDisplay = parsed.join(', ')
+      }
+    } catch {
+      // Keep as-is
+    }
+  }
+
+  // 3. Generate each documentation file via AI
+  const docFiles: Array<{ path: string; filename: string; content: string }> = []
+
+  // Helper to generate a single doc
+  async function generateDoc(
+    filename: string,
+    filePath: string,
+    docType: string,
+    additionalContext: string
+  ): Promise<void> {
+    const systemPrompt = `You are a technical documentation writer. Generate comprehensive, professional ${docType} documentation for a software project. Use markdown formatting. Be thorough but concise. Include code examples where appropriate. Do NOT wrap the output in markdown code blocks.`
+
+    const userMessage = `Generate ${docType} documentation for the following project:
+
+**Project Name:** ${project.name}
+${project.description ? `**Description:** ${project.description}` : ''}
+${project.category ? `**Category:** ${project.category}` : ''}
+${techStackDisplay ? `**Tech Stack:** ${techStackDisplay}` : ''}
+${project.requirements ? `**Requirements:** ${project.requirements}` : ''}
+
+**Tasks & Assignments:**
+${tasksSummary || 'No tasks defined yet.'}
+
+**Agent Instructions:**
+${instructionsSummary || 'No instructions generated yet.'}
+
+**Team Discussion Summary:**
+${discussionsSummary || 'No discussions yet.'}
+
+${additionalContext}`
+
+    try {
+      const completion = await chatCompletion({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        temperature: 0.4,
+        maxTokens: 2000,
+      })
+
+      const content = completion.content.trim()
+
+      docFiles.push({ path: filePath, filename, content })
+    } catch (error) {
+      console.error(`Failed to generate ${docType} documentation:`, error)
+      docFiles.push({
+        path: filePath,
+        filename,
+        content: `# ${docType}\n\nDocumentation generation is pending. Please check back later.`,
+      })
+    }
+  }
+
+  // Generate all 5 documentation files
+  await generateDoc(
+    'README.md',
+    'README.md',
+    'README',
+    `Include: project overview, features list, quick start guide, tech stack summary, project structure overview, and links to other documentation files.`
+  )
+
+  await generateDoc(
+    'ARCHITECTURE.md',
+    'docs/ARCHITECTURE.md',
+    'Architecture Overview',
+    `Include: system architecture diagram description, component breakdown, data flow, design decisions and trade-offs, scalability considerations.`
+  )
+
+  await generateDoc(
+    'API.md',
+    'docs/API.md',
+    'API Documentation',
+    `Include: API endpoints overview, request/response formats, authentication, error handling, example requests and responses, rate limiting considerations.`
+  )
+
+  await generateDoc(
+    'INSTALLATION.md',
+    'docs/INSTALLATION.md',
+    'Installation Guide',
+    `Include: prerequisites, environment setup, dependency installation, configuration, environment variables, database setup, running in development and production modes.`
+  )
+
+  await generateDoc(
+    'DEPLOYMENT.md',
+    'docs/DEPLOYMENT.md',
+    'Deployment Guide',
+    `Include: deployment options, CI/CD pipeline setup, environment configuration, monitoring setup, rollback procedures, scaling considerations.`
+  )
+
+  // 4. Create ProjectFile records for each doc
+  for (const doc of docFiles) {
+    try {
+      await db.projectFile.create({
+        data: {
+          projectId,
+          filename: doc.filename,
+          path: doc.path,
+          content: doc.content,
+          mimeType: 'text/markdown',
+          size: Buffer.byteLength(doc.content, 'utf-8'),
+          encoding: 'utf-8',
+          source: 'orchestrator',
+        },
+      })
+    } catch (error) {
+      console.error(`Failed to save doc file ${doc.path}:`, error)
+      // Non-fatal: continue with other files
+    }
+  }
+
+  // 5. Create a documentation task assigned to the Document Agent
+  try {
+    const userId = await getDefaultUserId()
+    const docAgent = await db.agent.findFirst({
+      where: { type: 'document', isActive: true },
+    })
+
+    if (docAgent) {
+      await db.task.create({
+        data: {
+          title: 'Generate project documentation',
+          description: `Create comprehensive documentation including README.md, Architecture overview, API documentation, Installation guide, and Deployment guide for ${project.name}.`,
+          status: 'completed',
+          priority: 'medium',
+          type: 'development',
+          projectId,
+          creatorId: userId,
+          assigneeId: docAgent.id,
+          progress: 100,
+          startedAt: new Date(),
+          completedAt: new Date(),
+          result: `Documentation generated: ${docFiles.map((d) => d.path).join(', ')}`,
+          metadata: JSON.stringify({
+            source: 'orchestration',
+            generatedAt: new Date().toISOString(),
+            isDocumentation: true,
+            files: docFiles.map((d) => d.path),
+          }),
+        },
+      })
+    }
+  } catch (error) {
+    console.error('Failed to create documentation task:', error)
+    // Non-fatal
+  }
+
+  return {
+    files: docFiles.map((d) => ({ path: d.path, filename: d.filename })),
   }
 }

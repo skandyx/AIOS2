@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getDefaultUserId } from '@/lib/auth'
+import { ZipArchive } from 'archiver'
+import { Readable } from 'stream'
 
-interface GitHubFile {
+interface GeneratedFile {
   path: string
   content: string
 }
 
 /**
  * Generate project files based on project category, tech stack, and requirements
+ * (Same logic as /api/github/push/route.ts)
  */
 function generateProjectFiles(project: {
   name: string
@@ -17,8 +19,8 @@ function generateProjectFiles(project: {
   techStack: string | null
   requirements: string | null
   notes: string | null
-}): GitHubFile[] {
-  const files: GitHubFile[] = []
+}): GeneratedFile[] {
+  const files: GeneratedFile[] = []
   const techList: string[] = project.techStack ? JSON.parse(project.techStack) : []
   const techLower = techList.map(t => t.toLowerCase())
 
@@ -102,7 +104,7 @@ next-env.d.ts
 `
   files.push({ path: '.gitignore', content: gitignore })
 
-  // package.json (for Web App, API categories)
+  // package.json
   const isWebProject = ['web_app', 'api', 'automation', 'mobile', 'desktop'].includes(project.category || '')
   const isAIProject = project.category === 'ai' || techLower.some(t => t.includes('ai') || t.includes('ml') || t.includes('tensor'))
 
@@ -231,7 +233,6 @@ root.render(
 `,
       })
     } else {
-      // Generic Node.js project
       files.push({
         path: 'src/index.ts',
         content: `/**
@@ -259,7 +260,6 @@ export function cn(...classes: (string | undefined | null | false)[]) {
 `,
     })
   } else if (project.category === 'data') {
-    // Data project
     files.push({
       path: 'requirements.txt',
       content: `pandas>=2.0.0
@@ -285,7 +285,6 @@ if __name__ == "__main__":
 `,
     })
   } else {
-    // Generic project
     files.push({
       path: 'src/main.py',
       content: `"""
@@ -333,158 +332,18 @@ SOFTWARE.
   return files
 }
 
-/**
- * Create a GitHub repository
- */
-async function createGitHubRepo(
-  token: string,
-  repoName: string,
-  options: { private?: boolean; description?: string }
+// GET /api/projects/[id]/download - Download project as ZIP
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const response = await fetch('https://api.github.com/user/repos', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github.v3+json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      name: repoName,
-      description: options.description || '',
-      private: options.private ?? false,
-      auto_init: false, // We'll create files ourselves
-    }),
-  })
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}))
-    // If repo already exists, that's okay - we'll push to it
-    if (response.status === 422 && errorData.message?.includes('already exists')) {
-      return { alreadyExists: true }
-    }
-    throw new Error(errorData.message || `Failed to create repository: ${response.status}`)
-  }
-
-  const repoData = await response.json()
-  return {
-    alreadyExists: false,
-    fullName: repoData.full_name,
-    htmlUrl: repoData.html_url,
-    cloneUrl: repoData.clone_url,
-    owner: repoData.owner.login,
-  }
-}
-
-/**
- * Create or update a file in a GitHub repository
- */
-async function createFileInRepo(
-  token: string,
-  owner: string,
-  repo: string,
-  filePath: string,
-  content: string,
-  branch: string = 'main'
-) {
-  const encodedContent = Buffer.from(content).toString('base64')
-
-  // Check if file already exists (to get its SHA for updating)
-  const checkResponse = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github.v3+json',
-      },
-    }
-  )
-
-  let sha: string | undefined
-  if (checkResponse.ok) {
-    const fileData = await checkResponse.json()
-    sha = fileData.sha
-  }
-
-  const body: Record<string, unknown> = {
-    message: `Add ${filePath}`,
-    content: encodedContent,
-    branch,
-  }
-
-  if (sha) {
-    body.sha = sha
-  }
-
-  const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`,
-    {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    }
-  )
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}))
-    throw new Error(errorData.message || `Failed to create file ${filePath}: ${response.status}`)
-  }
-
-  return await response.json()
-}
-
-// POST /api/github/push - Push a project to GitHub
-export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { projectId, repoName, private: isPrivate, description } = body
+    const { id } = await params
 
-    if (!projectId) {
-      return NextResponse.json(
-        { error: 'Project ID is required' },
-        { status: 400 }
-      )
-    }
-
-    const userId = await getDefaultUserId()
-
-    // Get GitHub integration
-    const integration = await db.integration.findFirst({
-      where: {
-        userId,
-        type: 'github',
-        status: 'connected',
-      },
-    })
-
-    if (!integration || !integration.credentials) {
-      return NextResponse.json(
-        { error: 'GitHub integration not configured. Please connect your GitHub account first.' },
-        { status: 400 }
-      )
-    }
-
-    // Parse credentials
-    let credentials: { token: string; username: string }
-    try {
-      credentials = JSON.parse(integration.credentials)
-    } catch {
-      return NextResponse.json(
-        { error: 'Invalid GitHub credentials. Please reconfigure the integration.' },
-        { status: 400 }
-      )
-    }
-
-    const { token, username } = credentials
-
-    // Get project details
-    const project = await db.project.findFirst({
-      where: {
-        id: projectId,
-        userId,
+    const project = await db.project.findUnique({
+      where: { id },
+      include: {
+        files: true,
       },
     })
 
@@ -495,120 +354,84 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update project status to indicate push is in progress
-    await db.project.update({
-      where: { id: projectId },
-      data: { githubStatus: 'linked' },
+    // Collect uploaded files from DB
+    const uploadedFiles = project.files
+
+    // Generate the project skeleton files
+    const generatedFiles = generateProjectFiles(project)
+
+    // Track paths from uploaded files to avoid duplicates with generated files
+    const uploadedPaths = new Set(uploadedFiles.map(f => f.path))
+
+    // Filter out generated files that overlap with uploaded files (uploaded takes precedence)
+    const uniqueGeneratedFiles = generatedFiles.filter(f => !uploadedPaths.has(f.path))
+
+    // Create archiver ZIP stream
+    const archive = new ZipArchive({
+      zlib: { level: 9 }, // Best compression
     })
 
-    // Determine repository name
-    const finalRepoName = repoName || project.name.toLowerCase().replace(/[^a-z0-9._-]/g, '-')
-    const finalDescription = description || project.description || ''
-
-    // Step 1: Create the repository
-    const repoResult = await createGitHubRepo(token, finalRepoName, {
-      private: isPrivate ?? false,
-      description: finalDescription,
-    })
-
-    let owner = username
-    let repoUrl = `https://github.com/${username}/${finalRepoName}`
-
-    if (!repoResult.alreadyExists && 'owner' in repoResult) {
-      owner = repoResult.owner
-      repoUrl = repoResult.htmlUrl
-    }
-
-    // Step 2: Generate project files
-    const files = generateProjectFiles(project)
-
-    // Step 3: Push files to GitHub (sequentially to avoid rate limits)
-    const pushedFiles: string[] = []
+    // Collect errors
     const errors: string[] = []
+    archive.on('error', (err) => {
+      errors.push(err.message)
+    })
 
-    for (const file of files) {
+    // Add uploaded files to the archive
+    for (const file of uploadedFiles) {
       try {
-        await createFileInRepo(token, owner, finalRepoName, file.path, file.content)
-        pushedFiles.push(file.path)
-      } catch (fileError) {
-        const errorMsg = fileError instanceof Error ? fileError.message : 'Unknown error'
-        console.error(`Failed to push file ${file.path}:`, errorMsg)
-        errors.push(`${file.path}: ${errorMsg}`)
+        let buffer: Buffer
+        if (file.encoding === 'base64') {
+          buffer = Buffer.from(file.content, 'base64')
+        } else {
+          buffer = Buffer.from(file.content, 'utf-8')
+        }
+        archive.append(buffer, { name: file.path })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error'
+        console.error(`Failed to add uploaded file ${file.path}:`, msg)
+        errors.push(`uploaded:${file.path}: ${msg}`)
       }
     }
 
-    // Step 4: Update project with GitHub info
-    const branch = 'main'
-    const now = new Date()
+    // Add generated skeleton files to the archive
+    for (const file of uniqueGeneratedFiles) {
+      try {
+        archive.append(Buffer.from(file.content, 'utf-8'), { name: file.path })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error'
+        console.error(`Failed to add generated file ${file.path}:`, msg)
+        errors.push(`generated:${file.path}: ${msg}`)
+      }
+    }
 
-    await db.project.update({
-      where: { id: projectId },
-      data: {
-        githubRepoUrl: repoUrl,
-        githubBranch: branch,
-        githubStatus: errors.length === files.length ? 'error' : 'pushed',
-        githubPushedAt: now,
-      },
-    })
+    // Finalize the archive
+    archive.finalize()
 
-    // Update integration lastSyncedAt
-    await db.integration.update({
-      where: { id: integration.id },
-      data: { lastSyncedAt: now },
-    })
+    // Convert the archive stream to a buffer
+    const chunks: Buffer[] = []
+    const readable = Readable.from(archive as unknown as Readable)
 
-    // Log agent activity
-    await db.agentActivity.create({
-      data: {
-        agentName: 'GitHub Integration',
-        agentType: 'system',
-        projectId,
-        action: `Pushed project "${project.name}" to GitHub at ${repoUrl}`,
-        type: 'milestone',
-        status: errors.length === files.length ? 'error' : 'completed',
-        metadata: JSON.stringify({
-          repoUrl,
-          repoName: finalRepoName,
-          pushedFiles,
-          errors,
-          fileCount: files.length,
-          successCount: pushedFiles.length,
-        }),
-      },
-    })
+    for await (const chunk of readable) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    }
 
-    return NextResponse.json({
-      success: errors.length < files.length,
-      repoUrl,
-      repoName: finalRepoName,
-      owner,
-      branch,
-      pushedFiles,
-      totalFiles: files.length,
-      successCount: pushedFiles.length,
-      errors: errors.length > 0 ? errors : undefined,
-      githubStatus: errors.length === files.length ? 'error' : 'pushed',
-    })
+    const zipBuffer = Buffer.concat(chunks)
+
+    // Build response
+    const zipFilename = `${project.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}.zip`
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${zipFilename}"`,
+      'Content-Length': String(zipBuffer.length),
+    }
+
+    return new NextResponse(zipBuffer, { status: 200, headers })
   } catch (error) {
-    console.error('Push to GitHub error:', error)
-
-    // Try to update project status to error
-    try {
-      const body = await request.json().catch(() => ({}))
-      if (body.projectId) {
-        await db.project.update({
-          where: { id: body.projectId },
-          data: { githubStatus: 'error' },
-        })
-      }
-    } catch {
-      // Ignore update errors
-    }
-
+    console.error('Download project ZIP error:', error)
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : 'Failed to push project to GitHub',
-      },
+      { error: 'Failed to generate project ZIP' },
       { status: 500 }
     )
   }

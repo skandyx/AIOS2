@@ -32,6 +32,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Progress } from '@/components/ui/progress'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Switch } from '@/components/ui/switch'
 import {
   Plus,
   FolderKanban,
@@ -67,7 +69,18 @@ import {
   Globe,
   GitBranch,
   RefreshCw,
+  Download,
+  Send,
+  ChevronDown,
+  ChevronRight,
+  Activity,
+  Eye,
+  ClipboardList,
+  CircleDot,
+  Search,
+  Cog,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -80,6 +93,7 @@ interface TaskData {
   title: string
   description?: string
   status: 'todo' | 'in_progress' | 'done'
+  priority?: string
   assignedTo?: string
   assignee?: { id: string; name: string; type: string; avatar?: string }
   createdAt: string
@@ -97,6 +111,45 @@ interface McpAssignment {
   mcpServerId: string
   role?: string
   mcpServer?: { id: string; name: string; description?: string; url?: string }
+}
+
+interface ProjectFileData {
+  id: string
+  filename: string
+  path: string
+  mimeType?: string | null
+  size: number
+  encoding: string
+  source: string
+  createdAt: string
+  updatedAt: string
+  type?: string
+}
+
+interface AgentDiscussionMsg {
+  id: string
+  agentId?: string | null
+  agentName: string
+  agentType: string
+  agentAvatar?: string | null
+  content: string
+  round: number
+  type: string
+  metadata?: string | null
+  timestamp: string
+}
+
+interface AgentInstruction {
+  id: string
+  agentId?: string | null
+  agentName: string
+  agentType: string
+  agentAvatar?: string | null
+  action: string
+  type: string
+  status: string
+  metadata?: string | null
+  timestamp: string
 }
 
 interface ProjectData {
@@ -118,14 +171,23 @@ interface ProjectData {
   githubBranch?: string | null
   githubStatus?: string | null
   githubPushedAt?: string | null
+  orchestratorStatus?: string | null
+  orchestratorStartedAt?: string | null
+  orchestratorCompletedAt?: string | null
   _count?: {
     tasks: number
     skills: number
     mcpServers: number
+    files: number
+    discussions: number
+    activities: number
   }
   tasks?: TaskData[]
   skills?: SkillAssignment[]
   mcpServers?: McpAssignment[]
+  files?: ProjectFileData[]
+  discussions?: AgentDiscussionMsg[]
+  activities?: AgentInstruction[]
 }
 
 interface InstalledSkill {
@@ -139,24 +201,6 @@ interface InstalledMcp {
   name: string
   description?: string
   url?: string
-}
-
-interface AgentActivity {
-  id: string
-  agentName: string
-  agentType: string
-  action: string
-  timestamp: string
-  status: 'active' | 'idle' | 'busy' | 'error' | 'completed'
-}
-
-interface AgentMessage {
-  id: string
-  from: string
-  fromType: string
-  content: string
-  timestamp: string
-  avatar?: string
 }
 
 interface FileTreeNode {
@@ -191,11 +235,13 @@ const PRIORITY_OPTIONS: ProjectPriority[] = ['low', 'medium', 'high', 'critical'
 
 const STATUS_OPTIONS: ProjectStatus[] = ['planning', 'in_progress', 'on_hold', 'completed', 'archived']
 
-const AUTOMATION_TOOLS = [
-  { name: 'Activepieces', icon: '🧩', url: 'http://localhost:4200', description: 'Open-source workflow automation' },
-  { name: 'Node-RED', icon: '🔴', url: 'http://localhost:1880', description: 'Flow-based programming tool' },
-  { name: 'n8n', icon: '⚡', url: 'http://localhost:5678', description: 'Workflow automation platform' },
-  { name: 'Huginn', icon: '🦅', url: 'http://localhost:3100', description: 'Agent-based automation system' },
+const PIPELINE_STAGES = [
+  { key: 'planning', label: 'Planning', emoji: '📋' },
+  { key: 'analyzing', label: 'Analyzing', emoji: '🔍' },
+  { key: 'assigning', label: 'Assigning', emoji: '🎯' },
+  { key: 'discussing', label: 'Discussing', emoji: '💬' },
+  { key: 'working', label: 'Working', emoji: '⚙️' },
+  { key: 'completed', label: 'Completed', emoji: '✅' },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -238,6 +284,63 @@ function calculateProgress(tasks: TaskData[] | undefined): number {
   return Math.round((done / tasks.length) * 100)
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function getAgentColor(type: string) {
+  switch (type) {
+    case 'coordinator': return { bg: 'bg-cyan-500/20', text: 'text-cyan-400', border: 'border-cyan-500/30', dot: 'bg-cyan-400' }
+    case 'developer': return { bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30', dot: 'bg-emerald-400' }
+    case 'security': return { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', dot: 'bg-red-400' }
+    case 'data': return { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30', dot: 'bg-amber-400' }
+    case 'qa': return { bg: 'bg-violet-500/20', text: 'text-violet-400', border: 'border-violet-500/30', dot: 'bg-violet-400' }
+    case 'research': return { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', dot: 'bg-blue-400' }
+    case 'system': return { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30', dot: 'bg-orange-400' }
+    case 'reasoning': return { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30', dot: 'bg-purple-400' }
+    case 'planning': return { bg: 'bg-teal-500/20', text: 'text-teal-400', border: 'border-teal-500/30', dot: 'bg-teal-400' }
+    case 'document': return { bg: 'bg-pink-500/20', text: 'text-pink-400', border: 'border-pink-500/30', dot: 'bg-pink-400' }
+    case 'mcp': return { bg: 'bg-violet-500/20', text: 'text-violet-400', border: 'border-violet-500/30', dot: 'bg-violet-400' }
+    case 'workflow': return { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30', dot: 'bg-amber-400' }
+    default: return { bg: 'bg-slate-500/20', text: 'text-slate-400', border: 'border-slate-500/30', dot: 'bg-slate-400' }
+  }
+}
+
+function getAgentAvatar(type: string) {
+  switch (type) {
+    case 'coordinator': return '🎯'
+    case 'developer': return '💻'
+    case 'security': return '🛡️'
+    case 'data': return '📊'
+    case 'qa': return '🧪'
+    case 'research': return '🔬'
+    case 'system': return '⚙️'
+    case 'reasoning': return '🧠'
+    case 'planning': return '📋'
+    case 'document': return '📄'
+    case 'mcp': return '🔌'
+    case 'workflow': return '🔄'
+    default: return '🤖'
+  }
+}
+
+function getFileIcon(filename: string) {
+  const ext = filename.split('.').pop()?.toLowerCase()
+  switch (ext) {
+    case 'ts': case 'tsx': return <FileCode className="size-3.5 text-cyan-400 shrink-0" />
+    case 'js': case 'jsx': case 'mjs': return <FileCode className="size-3.5 text-amber-400 shrink-0" />
+    case 'py': return <FileCode className="size-3.5 text-emerald-400 shrink-0" />
+    case 'json': return <FileJson className="size-3.5 text-amber-400 shrink-0" />
+    case 'md': case 'txt': return <FileText className="size-3.5 text-blue-400 shrink-0" />
+    case 'css': case 'scss': return <FileCode className="size-3.5 text-pink-400 shrink-0" />
+    case 'yaml': case 'yml': case 'toml': return <FileText className="size-3.5 text-orange-400 shrink-0" />
+    default: return <File className="size-3.5 text-slate-400 shrink-0" />
+  }
+}
+
 // ─── Sub-Components ───────────────────────────────────────────────────────────
 
 function ProjectCard({
@@ -275,7 +378,6 @@ function ProjectCard({
       </CardHeader>
 
       <CardContent className="px-4 pb-4 pt-0 space-y-3">
-        {/* Badges row */}
         <div className="flex flex-wrap gap-1.5">
           <Badge
             variant="outline"
@@ -295,6 +397,14 @@ function ProjectCard({
               {project.category}
             </Badge>
           )}
+          {project.orchestratorStatus && project.orchestratorStatus !== 'pending' && (
+            <Badge variant="outline" className={`text-[10px] h-5 gap-1 ${
+              project.orchestratorStatus === 'completed' ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20' : 'text-amber-300 bg-amber-500/10 border-amber-500/20'
+            }`}>
+              <Bot className="size-2.5" />
+              {project.orchestratorStatus === 'completed' ? 'Orchestrated' : 'Orchestrating'}
+            </Badge>
+          )}
           {project.githubStatus === 'pushed' && (
             <Badge variant="outline" className="text-[10px] h-5 text-emerald-300 bg-emerald-500/10 border-emerald-500/20 gap-1">
               <Github className="size-2.5" />
@@ -303,7 +413,6 @@ function ProjectCard({
           )}
         </div>
 
-        {/* Tech stack pills */}
         {techStack.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {techStack.slice(0, 4).map((tech) => (
@@ -323,7 +432,6 @@ function ProjectCard({
           </div>
         )}
 
-        {/* Stats row */}
         <div className="flex items-center gap-3 text-xs text-slate-400">
           <span className="flex items-center gap-1">
             <ListChecks className="size-3" />
@@ -345,7 +453,6 @@ function ProjectCard({
           )}
         </div>
 
-        {/* Progress bar */}
         {taskCount > 0 && (
           <div className="space-y-1">
             <div className="flex items-center justify-between text-[10px]">
@@ -356,7 +463,6 @@ function ProjectCard({
           </div>
         )}
 
-        {/* Updated time */}
         <div className="flex items-center justify-between text-[10px] text-slate-500">
           <span>Updated {formatRelativeTime(project.updatedAt)}</span>
         </div>
@@ -628,6 +734,45 @@ function StatusChangeDialog({
   )
 }
 
+// ─── Pipeline Step Component ──────────────────────────────────────────────────
+
+function PipelineStep({
+  stage,
+  isActive,
+  isCompleted,
+  isPending,
+}: {
+  stage: typeof PIPELINE_STAGES[number]
+  isActive: boolean
+  isCompleted: boolean
+  isPending: boolean
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1.5 min-w-[72px]">
+      <div
+        className={cn(
+          'w-10 h-10 rounded-full flex items-center justify-center text-lg transition-all duration-500',
+          isActive && 'bg-rose-600/30 border-2 border-rose-500 shadow-lg shadow-rose-500/30 scale-110 animate-pulse',
+          isCompleted && 'bg-emerald-600/30 border-2 border-emerald-500 scale-100',
+          isPending && 'bg-neutral-800/50 border-2 border-neutral-700 opacity-50'
+        )}
+      >
+        {stage.emoji}
+      </div>
+      <span
+        className={cn(
+          'text-[10px] font-medium text-center leading-tight',
+          isActive && 'text-rose-400',
+          isCompleted && 'text-emerald-400',
+          isPending && 'text-neutral-500'
+        )}
+      >
+        {stage.label}
+      </span>
+    </div>
+  )
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function ProjectsModule() {
@@ -653,17 +798,16 @@ export default function ProjectsModule() {
     name: '', description: '', requirements: '', notes: '', icon: '', category: '', priority: 'medium', dueDate: '',
   })
   const [aiAnalyzing, setAiAnalyzing] = useState(false)
-  const [aiTasksGenerated, setAiTasksGenerated] = useState(0)
   const [aiError, setAiError] = useState<string | null>(null)
-  const [agentActivities, setAgentActivities] = useState<AgentActivity[]>([])
-  const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([])
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['src', 'src/components']))
-  const [detailTab, setDetailTab] = useState<'code' | 'chat'>('code')
+  const [detailTab, setDetailTab] = useState('pipeline')
   const socketRef = useRef<ReturnType<typeof io> | null>(null)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['src', 'src/components']))
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set())
 
   // ── Orchestration state ──
   const [orchestrating, setOrchestrating] = useState(false)
-  const [orchestrationResult, setOrchestrationResult] = useState<{ tasksCreated: number; agentCount: number } | null>(null)
 
   // ── GitHub state ──
   const [githubConnected, setGithubConnected] = useState(false)
@@ -683,6 +827,13 @@ export default function ProjectsModule() {
 
   // ── Discussion generation state ──
   const [generatingDiscussion, setGeneratingDiscussion] = useState(false)
+
+  // ── File upload state ──
+  const [uploadingFiles, setUploadingFiles] = useState(false)
+  const [projectFiles, setProjectFiles] = useState<ProjectFileData[]>([])
+
+  // ── Download state ──
+  const [downloading, setDownloading] = useState(false)
 
   // Fetch projects
   const fetchProjects = useCallback(async () => {
@@ -751,6 +902,90 @@ export default function ProjectsModule() {
     checkGithub()
   }, [fetchInstalledSkills, fetchInstalledMcp, checkGithub])
 
+  // ─── Polling for orchestrator status ──────────────────────────────────────
+
+  useEffect(() => {
+    if (view !== 'detail' || !selectedProject) return
+
+    const activeStatuses = ['analyzing', 'assigning', 'discussing', 'working']
+    const shouldPoll = activeStatuses.includes(selectedProject.orchestratorStatus || '')
+
+    if (shouldPoll) {
+      pollingRef.current = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/projects/${selectedProject.id}`)
+          if (res.ok) {
+            const detail = await res.json()
+            setSelectedProject(detail)
+            setProjects((prev) => prev.map((p) => (p.id === detail.id ? detail : p)))
+          }
+        } catch {
+          // ignore polling errors
+        }
+      }, 3000)
+    }
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
+      }
+    }
+  }, [view, selectedProject?.id, selectedProject?.orchestratorStatus])
+
+  // ─── WebSocket for real-time updates ──────────────────────────────────────
+
+  useEffect(() => {
+    if (view !== 'detail' || !selectedProject) return
+
+    const socket = io('/?XTransformPort=3003', {
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 3,
+      reconnectionDelay: 1000,
+    })
+
+    socketRef.current = socket
+
+    socket.on('agent:message', () => {
+      // Refresh project data on agent messages
+      fetch(`/api/projects/${selectedProject.id}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(detail => {
+          if (detail) {
+            setSelectedProject(detail)
+            setProjects((prev) => prev.map((p) => (p.id === detail.id ? detail : p)))
+          }
+        })
+        .catch(() => {})
+    })
+
+    return () => {
+      socket.disconnect()
+      socketRef.current = null
+    }
+  }, [view, selectedProject?.id])
+
+  // ─── Fetch files when project is selected ─────────────────────────────────
+
+  useEffect(() => {
+    if (view !== 'detail' || !selectedProject) return
+
+    const fetchFiles = async () => {
+      try {
+        const res = await fetch(`/api/projects/${selectedProject.id}/files`)
+        if (res.ok) {
+          const data = await res.json()
+          setProjectFiles(data.files || [])
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    fetchFiles()
+  }, [view, selectedProject?.id, selectedProject?.updatedAt])
+
   // ─── File Tree Generation ───────────────────────────────────────────────────
 
   const generateFileTree = useCallback((project: ProjectData): FileTreeNode[] => {
@@ -771,32 +1006,14 @@ export default function ProjectsModule() {
             { name: 'lib', type: 'folder', children: [
               { name: 'utils.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.2 KB', modified: '2d ago' },
               { name: 'db.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.1 KB', modified: '1d ago' },
-              { name: 'auth.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '3.5 KB', modified: '4h ago' },
             ]},
             { name: 'api', type: 'folder', children: [
               { name: 'projects', type: 'folder', children: [
                 { name: 'route.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.8 KB', modified: '2h ago' },
               ]},
-              { name: 'tasks', type: 'folder', children: [
-                { name: 'route.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.9 KB', modified: '3h ago' },
-              ]},
             ]},
-            { name: 'app', type: 'folder', children: [
-              { name: 'layout.tsx', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.5 KB', modified: '1d ago' },
-              { name: 'page.tsx', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '3.2 KB', modified: '1h ago' },
-            ]},
-            { name: 'hooks', type: 'folder', children: [
-              { name: 'useAuth.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.8 KB', modified: '5h ago' },
-              { name: 'useApi.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.3 KB', modified: '6h ago' },
-            ]},
-          ]},
-          { name: 'public', type: 'folder', children: [
-            { name: 'favicon.ico', type: 'file', icon: <File className="size-3.5 text-slate-400" />, size: '4.2 KB', modified: '1w ago' },
-            { name: 'logo.svg', type: 'file', icon: <File className="size-3.5 text-slate-400" />, size: '1.1 KB', modified: '3d ago' },
           ]},
           { name: 'package.json', type: 'file', icon: <FileJson className="size-3.5 text-amber-400" />, size: '1.8 KB', modified: '2d ago' },
-          { name: 'tsconfig.json', type: 'file', icon: <FileJson className="size-3.5 text-amber-400" />, size: '0.6 KB', modified: '1w ago' },
-          { name: 'next.config.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '0.3 KB', modified: '1w ago' },
           { name: 'README.md', type: 'file', icon: <FileText className="size-3.5 text-blue-400" />, size: '2.1 KB', modified: '3d ago' },
         ]
       case 'API':
@@ -805,28 +1022,12 @@ export default function ProjectsModule() {
             { name: 'routes', type: 'folder', children: [
               { name: 'auth.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '3.2 KB', modified: '1h ago' },
               { name: 'users.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '4.1 KB', modified: '2h ago' },
-              { name: 'projects.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '5.3 KB', modified: '30m ago' },
             ]},
             { name: 'middleware', type: 'folder', children: [
               { name: 'auth.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.1 KB', modified: '1d ago' },
-              { name: 'rateLimit.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.4 KB', modified: '2d ago' },
-              { name: 'errorHandler.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.8 KB', modified: '1d ago' },
             ]},
-            { name: 'models', type: 'folder', children: [
-              { name: 'User.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.4 KB', modified: '3d ago' },
-              { name: 'Project.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.9 KB', modified: '2d ago' },
-            ]},
-            { name: 'utils', type: 'folder', children: [
-              { name: 'validators.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.8 KB', modified: '4h ago' },
-              { name: 'helpers.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.5 KB', modified: '1d ago' },
-            ]},
-          ]},
-          { name: 'config', type: 'folder', children: [
-            { name: 'database.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '0.8 KB', modified: '1w ago' },
-            { name: 'env.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '0.5 KB', modified: '1w ago' },
           ]},
           { name: 'package.json', type: 'file', icon: <FileJson className="size-3.5 text-amber-400" />, size: '1.2 KB', modified: '3d ago' },
-          { name: 'tsconfig.json', type: 'file', icon: <FileJson className="size-3.5 text-amber-400" />, size: '0.6 KB', modified: '1w ago' },
         ]
       case 'AI':
         return [
@@ -834,23 +1035,10 @@ export default function ProjectsModule() {
             { name: 'agents', type: 'folder', children: [
               { name: 'coordinator.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '4.5 KB', modified: '1h ago' },
               { name: 'developer.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '6.2 KB', modified: '2h ago' },
-              { name: 'reviewer.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '3.8 KB', modified: '3h ago' },
             ]},
             { name: 'models', type: 'folder', children: [
               { name: 'llm.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '5.1 KB', modified: '4h ago' },
-              { name: 'embeddings.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.3 KB', modified: '1d ago' },
             ]},
-            { name: 'tools', type: 'folder', children: [
-              { name: 'search.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '3.2 KB', modified: '1d ago' },
-              { name: 'code_gen.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '4.7 KB', modified: '30m ago' },
-            ]},
-            { name: 'api', type: 'folder', children: [
-              { name: 'routes.py', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '2.9 KB', modified: '2h ago' },
-            ]},
-          ]},
-          { name: 'data', type: 'folder', children: [
-            { name: 'prompts.json', type: 'file', icon: <FileJson className="size-3.5 text-amber-400" />, size: '8.2 KB', modified: '1d ago' },
-            { name: 'config.yaml', type: 'file', icon: <FileText className="size-3.5 text-blue-400" />, size: '1.1 KB', modified: '3d ago' },
           ]},
           { name: 'requirements.txt', type: 'file', icon: <FileText className="size-3.5 text-blue-400" />, size: '0.4 KB', modified: '1w ago' },
           { name: 'README.md', type: 'file', icon: <FileText className="size-3.5 text-blue-400" />, size: '2.8 KB', modified: '2d ago' },
@@ -859,97 +1047,12 @@ export default function ProjectsModule() {
         return [
           { name: 'src', type: 'folder', children: [
             { name: 'index.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '1.2 KB', modified: '1h ago' },
-            { name: 'utils.ts', type: 'file', icon: <FileCode className="size-3.5 text-cyan-400" />, size: '0.8 KB', modified: '3h ago' },
-          ]},
-          { name: 'config', type: 'folder', children: [
-            { name: 'default.json', type: 'file', icon: <FileJson className="size-3.5 text-amber-400" />, size: '0.5 KB', modified: '1w ago' },
           ]},
           { name: 'package.json', type: 'file', icon: <FileJson className="size-3.5 text-amber-400" />, size: '0.8 KB', modified: '2d ago' },
           { name: 'README.md', type: 'file', icon: <FileText className="size-3.5 text-blue-400" />, size: '1.0 KB', modified: '3d ago' },
         ]
     }
   }, [])
-
-  // ─── WebSocket + Real-time Agent Effects ──────────────────────────────────
-
-  useEffect(() => {
-    if (view !== 'detail' || !selectedProject) return
-
-    // Connect to WebSocket for real-time updates
-    const socket = io('/?XTransformPort=3003', {
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: 3,
-      reconnectionDelay: 1000,
-    })
-
-    socketRef.current = socket
-
-    socket.on('agent:message', (msg: AgentMessage) => {
-      setAgentMessages((prev) => [msg, ...prev].slice(0, 50))
-    })
-
-    socket.on('agent:status', (activity: AgentActivity) => {
-      setAgentActivities((prev) => [activity, ...prev].slice(0, 30))
-    })
-
-    // Fetch orchestration status to seed real agent data
-    const fetchOrchestrationStatus = async () => {
-      try {
-        const res = await fetch(`/api/projects/${selectedProject.id}/orchestrate`)
-        if (res.ok) {
-          const data = await res.json()
-          if (data.agentUtilization && Array.isArray(data.agentUtilization)) {
-            const activities: AgentActivity[] = data.agentUtilization.map(
-              (agent: { agentId: string; agentName: string; agentType: string; taskCount: number }, i: number) => ({
-                id: `orch-${agent.agentId}-${i}`,
-                agentName: agent.agentName,
-                agentType: agent.agentType,
-                action: `Working on ${agent.taskCount} task${agent.taskCount !== 1 ? 's' : ''}`,
-                timestamp: new Date().toISOString(),
-                status: agent.taskCount > 0 ? 'active' as const : 'idle' as const,
-              })
-            )
-            setAgentActivities(activities)
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    // Fetch existing discussions for this project
-    const fetchDiscussions = async () => {
-      try {
-        const res = await fetch(`/api/agent-discussions?projectId=${selectedProject.id}`)
-        if (res.ok) {
-          const data = await res.json()
-          if (data.messages && data.messages.length > 0) {
-            const msgs: AgentMessage[] = data.messages.map(
-              (m: { agentId: string; agentName: string; agentType: string; content: string; timestamp: string }, i: number) => ({
-                id: `disc-${m.agentId}-${i}`,
-                from: m.agentName,
-                fromType: m.agentType,
-                content: m.content,
-                timestamp: m.timestamp,
-              })
-            )
-            setAgentMessages(msgs)
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    fetchOrchestrationStatus()
-    fetchDiscussions()
-
-    return () => {
-      socket.disconnect()
-      socketRef.current = null
-    }
-  }, [view, selectedProject?.id])
 
   // Toggle folder expand/collapse
   const toggleFolder = (path: string) => {
@@ -961,89 +1064,13 @@ export default function ProjectsModule() {
     })
   }
 
-  // Agent type color mapping
-  const getAgentColor = (type: string) => {
-    switch (type) {
-      case 'coordinator': return { bg: 'bg-cyan-500/20', text: 'text-cyan-400', border: 'border-cyan-500/30', dot: 'bg-cyan-400' }
-      case 'developer': return { bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30', dot: 'bg-emerald-400' }
-      case 'security': return { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', dot: 'bg-red-400' }
-      case 'data': return { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30', dot: 'bg-amber-400' }
-      case 'qa': return { bg: 'bg-violet-500/20', text: 'text-violet-400', border: 'border-violet-500/30', dot: 'bg-violet-400' }
-      case 'research': return { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', dot: 'bg-blue-400' }
-      case 'system': return { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30', dot: 'bg-orange-400' }
-      case 'reasoning': return { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30', dot: 'bg-purple-400' }
-      case 'planning': return { bg: 'bg-teal-500/20', text: 'text-teal-400', border: 'border-teal-500/30', dot: 'bg-teal-400' }
-      default: return { bg: 'bg-slate-500/20', text: 'text-slate-400', border: 'border-slate-500/30', dot: 'bg-slate-400' }
-    }
-  }
-
-  const getStatusDot = (status: string) => {
-    switch (status) {
-      case 'active': return 'bg-emerald-400'
-      case 'busy': return 'bg-amber-400'
-      case 'error': return 'bg-red-400'
-      case 'completed': return 'bg-emerald-400'
-      default: return 'bg-slate-500'
-    }
-  }
-
-  // Agent avatar emoji by type
-  const getAgentAvatar = (type: string) => {
-    switch (type) {
-      case 'coordinator': return '🎯'
-      case 'developer': return '💻'
-      case 'security': return '🛡️'
-      case 'data': return '📊'
-      case 'qa': return '🧪'
-      case 'research': return '🔬'
-      case 'system': return '⚙️'
-      case 'reasoning': return '🧠'
-      case 'planning': return '📋'
-      case 'workflow': return '🔄'
-      case 'monitoring': return '📡'
-      default: return '🤖'
-    }
-  }
-
-  // Render file tree recursively
-  const renderFileTree = (nodes: FileTreeNode[], depth: number = 0, parentPath: string = ''): React.ReactNode => {
-    return nodes.map((node) => {
-      const path = parentPath ? `${parentPath}/${node.name}` : node.name
-      const isExpanded = expandedFolders.has(path)
-
-      if (node.type === 'folder') {
-        return (
-          <div key={path}>
-            <button
-              className="flex items-center gap-1.5 w-full py-1 px-2 rounded text-xs text-slate-300 hover:bg-neutral-800/60 hover:text-white transition-colors"
-              style={{ paddingLeft: `${depth * 16 + 8}px` }}
-              onClick={() => toggleFolder(path)}
-            >
-              {isExpanded ? (
-                <FolderOpen className="size-3.5 text-amber-400 shrink-0" />
-              ) : (
-                <Folder className="size-3.5 text-amber-400 shrink-0" />
-              )}
-              <span className="truncate">{node.name}</span>
-            </button>
-            {isExpanded && node.children && renderFileTree(node.children, depth + 1, path)}
-          </div>
-        )
-      }
-
-      return (
-        <div
-          key={path}
-          className="flex items-center justify-between py-1 px-2 rounded text-xs hover:bg-neutral-800/60 transition-colors group"
-          style={{ paddingLeft: `${depth * 16 + 8}px` }}
-        >
-          <div className="flex items-center gap-1.5 min-w-0">
-            {node.icon || <File className="size-3.5 text-slate-400 shrink-0" />}
-            <span className="text-slate-400 group-hover:text-white truncate transition-colors">{node.name}</span>
-          </div>
-          <span className="text-[10px] text-slate-600 shrink-0 ml-2">{node.size}</span>
-        </div>
-      )
+  // Toggle task expand
+  const toggleTaskExpand = (taskId: string) => {
+    setExpandedTasks((prev) => {
+      const next = new Set(prev)
+      if (next.has(taskId)) next.delete(taskId)
+      else next.add(taskId)
+      return next
     })
   }
 
@@ -1052,11 +1079,10 @@ export default function ProjectsModule() {
     setSelectedProject(project)
     setView('detail')
     setEditingProject(false)
-    setOrchestrationResult(null)
     setPushResult(null)
     setPushError(null)
+    setDetailTab('pipeline')
 
-    // Fetch full detail
     try {
       const res = await fetch(`/api/projects/${project.id}`)
       if (res.ok) {
@@ -1068,7 +1094,7 @@ export default function ProjectsModule() {
     }
   }
 
-  // Create project - auto-open detail view and show hint for AI generation
+  // Create project - auto-open detail view
   const handleProjectCreated = (project: ProjectData) => {
     setProjects((prev) => [project, ...prev])
     handleSelectProject(project)
@@ -1223,8 +1249,6 @@ export default function ProjectsModule() {
       })
       const data = await res.json()
       if (data.success) {
-        setAiTasksGenerated(data.tasksCreated)
-        // Refresh the project detail
         const detailRes = await fetch(`/api/projects/${selectedProject.id}`)
         if (detailRes.ok) {
           const detail = await detailRes.json()
@@ -1245,7 +1269,6 @@ export default function ProjectsModule() {
   const handleOrchestrate = async () => {
     if (!selectedProject) return
     setOrchestrating(true)
-    setOrchestrationResult(null)
     try {
       const res = await fetch(`/api/projects/${selectedProject.id}/orchestrate`, {
         method: 'POST',
@@ -1254,43 +1277,7 @@ export default function ProjectsModule() {
       })
       const data = await res.json()
       if (data.success) {
-        const plan = data.plan
-        const uniqueAgents = new Set(plan.assignments?.map((a: { agentId: string }) => a.agentId) || [])
-        setOrchestrationResult({
-          tasksCreated: plan.tasksCreated || 0,
-          agentCount: uniqueAgents.size,
-        })
-
-        // Add orchestration events to agent activity
-        if (plan.assignments) {
-          const newActivities: AgentActivity[] = plan.assignments.map(
-            (a: { agentId: string; agentName: string; agentType: string; taskTitle: string }, i: number) => ({
-              id: `orch-assign-${a.agentId}-${i}`,
-              agentName: a.agentName,
-              agentType: a.agentType,
-              action: `Assigned: ${a.taskTitle}`,
-              timestamp: new Date().toISOString(),
-              status: 'active' as const,
-            })
-          )
-          setAgentActivities((prev) => [...newActivities, ...prev].slice(0, 30))
-        }
-
-        // Load discussion messages from orchestration result
-        if (data.discussion && data.discussion.length > 0) {
-          const msgs: AgentMessage[] = data.discussion.map(
-            (m: { agentId: string; agentName: string; agentType: string; message: string }, i: number) => ({
-              id: `orch-disc-${m.agentId}-${i}`,
-              from: m.agentName,
-              fromType: m.agentType,
-              content: m.message,
-              timestamp: new Date().toISOString(),
-            })
-          )
-          setAgentMessages(msgs)
-        }
-
-        // Refresh the project detail to get updated tasks with assignments
+        // Refresh the project detail to get updated data
         const detailRes = await fetch(`/api/projects/${selectedProject.id}`)
         if (detailRes.ok) {
           const detail = await detailRes.json()
@@ -1317,23 +1304,98 @@ export default function ProjectsModule() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: selectedProject.id }),
       })
-      const data = await res.json()
-      if (data.success && data.messages) {
-        const msgs: AgentMessage[] = data.messages.map(
-          (m: { agentId: string; agentName: string; agentType: string; content: string; timestamp: string }, i: number) => ({
-            id: `disc-${m.agentId}-${i}-${Date.now()}`,
-            from: m.agentName,
-            fromType: m.agentType,
-            content: m.content,
-            timestamp: m.timestamp,
-          })
-        )
-        setAgentMessages(msgs)
+      if (res.ok) {
+        // Refresh project data
+        const detailRes = await fetch(`/api/projects/${selectedProject.id}`)
+        if (detailRes.ok) {
+          const detail = await detailRes.json()
+          setSelectedProject(detail)
+          setProjects((prev) => prev.map((p) => (p.id === detail.id ? detail : p)))
+        }
       }
     } catch {
       // silently fail
     } finally {
       setGeneratingDiscussion(false)
+    }
+  }
+
+  // ── File Upload ──
+  const handleFileUpload = async (files: FileList) => {
+    if (!selectedProject) return
+    setUploadingFiles(true)
+    for (const file of Array.from(files)) {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('path', file.name)
+
+      try {
+        const res = await fetch(`/api/projects/${selectedProject.id}/files`, {
+          method: 'POST',
+          body: formData,
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.file) {
+            setProjectFiles((prev) => [data.file, ...prev])
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    setUploadingFiles(false)
+  }
+
+  // ── Download ZIP ──
+  const handleDownloadZip = async () => {
+    if (!selectedProject) return
+    setDownloading(true)
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.id}/download`)
+      if (res.ok) {
+        const blob = await res.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${selectedProject.name.toLowerCase().replace(/\s+/g, '-')}.zip`
+        a.click()
+        window.URL.revokeObjectURL(url)
+      }
+    } catch {
+      // ignore
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  // ── Download single file ──
+  const handleDownloadFile = async (fileId: string, filename: string) => {
+    if (!selectedProject) return
+    try {
+      const res = await fetch(`/api/projects/${selectedProject.id}/files/${fileId}`)
+      if (res.ok) {
+        const blob = await res.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        a.click()
+        window.URL.revokeObjectURL(url)
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // ── Delete file ──
+  const handleDeleteFile = async (fileId: string) => {
+    if (!selectedProject) return
+    try {
+      await fetch(`/api/projects/${selectedProject.id}/files/${fileId}`, { method: 'DELETE' })
+      setProjectFiles((prev) => prev.filter(f => f.id !== fileId))
+    } catch {
+      // ignore
     }
   }
 
@@ -1388,7 +1450,6 @@ export default function ProjectsModule() {
           repoUrl: data.repoUrl,
           filesPushed: data.successCount || data.pushedFiles?.length || 0,
         })
-        // Update project with github info
         const updated = {
           ...selectedProject,
           githubRepoUrl: data.repoUrl,
@@ -1533,46 +1594,60 @@ export default function ProjectsModule() {
     }
   }
 
+  // Render file tree recursively
+  const renderFileTree = (nodes: FileTreeNode[], depth: number = 0, parentPath: string = ''): React.ReactNode => {
+    return nodes.map((node) => {
+      const path = parentPath ? `${parentPath}/${node.name}` : node.name
+      const isExpanded = expandedFolders.has(path)
+
+      if (node.type === 'folder') {
+        return (
+          <div key={path}>
+            <button
+              className="flex items-center gap-1.5 w-full py-1 px-2 rounded text-xs text-slate-300 hover:bg-neutral-800/60 hover:text-white transition-colors"
+              style={{ paddingLeft: `${depth * 16 + 8}px` }}
+              onClick={() => toggleFolder(path)}
+            >
+              {isExpanded ? (
+                <FolderOpen className="size-3.5 text-amber-400 shrink-0" />
+              ) : (
+                <Folder className="size-3.5 text-amber-400 shrink-0" />
+              )}
+              <span className="truncate">{node.name}</span>
+            </button>
+            {isExpanded && node.children && renderFileTree(node.children, depth + 1, path)}
+          </div>
+        )
+      }
+
+      return (
+        <div
+          key={path}
+          className="flex items-center justify-between py-1 px-2 rounded text-xs hover:bg-neutral-800/60 transition-colors group"
+          style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        >
+          <div className="flex items-center gap-1.5 min-w-0">
+            {node.icon || <File className="size-3.5 text-slate-400 shrink-0" />}
+            <span className="text-slate-400 group-hover:text-white truncate transition-colors">{node.name}</span>
+          </div>
+          <span className="text-[10px] text-slate-600 shrink-0 ml-2">{node.size}</span>
+        </div>
+      )
+    })
+  }
+
+  // ─── Pipeline stage determination ──────────────────────────────────────────
+
+  const getPipelineStageIndex = (status: string | null | undefined): number => {
+    if (!status || status === 'pending') return -1
+    return PIPELINE_STAGES.findIndex(s => s.key === status)
+  }
+
   // Stats
   const totalProjects = projects.length
   const activeProjects = projects.filter((p) => p.status === 'in_progress').length
   const completedProjects = projects.filter((p) => p.status === 'completed').length
   const planningProjects = projects.filter((p) => p.status === 'planning').length
-
-  // GitHub status badge
-  const getGithubBadge = () => {
-    if (selectedProject?.githubStatus === 'pushed' && selectedProject?.githubRepoUrl) {
-      return (
-        <a
-          href={selectedProject.githubRepoUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 transition-colors"
-        >
-          <Github className="size-3" />
-          <Globe className="size-2.5" />
-          Pushed
-        </a>
-      )
-    }
-    if (selectedProject?.githubStatus === 'error') {
-      return (
-        <span className="flex items-center gap-1 text-[10px] text-red-400">
-          <Github className="size-3" />
-          Error
-        </span>
-      )
-    }
-    if (githubConnected) {
-      return (
-        <span className="flex items-center gap-1 text-[10px] text-cyan-400">
-          <Github className="size-3" />
-          Linked
-        </span>
-      )
-    }
-    return null
-  }
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -1580,132 +1655,195 @@ export default function ProjectsModule() {
     <div className="h-full flex flex-col">
       <ScrollArea className="flex-1 min-h-0">
         <div className="space-y-6 p-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            <FolderKanban className="size-6 text-rose-400" />
-            Projects
-          </h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Manage projects, assign skills and MCP servers, track progress
-          </p>
-        </div>
-        {view === 'detail' ? (
-          <Button
-            variant="outline"
-            onClick={() => { setView('list'); setSelectedProject(null) }}
-            className="border-neutral-700 text-slate-300 gap-2"
-          >
-            <ChevronLeft className="size-4" />
-            Back to Projects
-          </Button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <Button
-              className="bg-rose-600 hover:bg-rose-700 text-white gap-2"
-              onClick={() => setCreateDialogOpen(true)}
-            >
-              <Plus className="size-4" />
-              New Project
-            </Button>
-            <CreateProjectDialog
-              open={createDialogOpen}
-              onOpenChange={setCreateDialogOpen}
-              onCreated={handleProjectCreated}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* ─── List View ──────────────────────────────────────────────────────── */}
-      {view === 'list' && (
-        <>
-          {/* Stats Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: 'Total Projects', value: totalProjects, icon: FolderKanban, color: 'text-rose-400' },
-              { label: 'Active', value: activeProjects, icon: Zap, color: 'text-amber-400' },
-              { label: 'Planning', value: planningProjects, icon: LayoutGrid, color: 'text-blue-400' },
-              { label: 'Completed', value: completedProjects, icon: CheckCircle2, color: 'text-emerald-400' },
-            ].map((stat) => (
-              <Card key={stat.label} className="bg-[#0d1117] border-neutral-800 py-4 shadow-lg shadow-rose-500/5">
-                <CardContent className="flex items-center gap-3 px-4">
-                  <stat.icon className={`size-5 ${stat.color}`} />
-                  <div>
-                    <p className="text-2xl font-bold text-white">{stat.value}</p>
-                    <p className="text-xs text-slate-400">{stat.label}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* Project Grid */}
-          {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Card key={i} className="bg-[#0d1117] border-neutral-800 animate-pulse py-4">
-                  <CardHeader className="pb-2">
-                    <div className="h-5 bg-neutral-800 rounded w-3/4" />
-                    <div className="h-3 bg-neutral-800/50 rounded w-1/2" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-3 bg-neutral-800/30 rounded w-full mb-2" />
-                    <div className="h-3 bg-neutral-800/30 rounded w-2/3" />
-                  </CardContent>
-                </Card>
-              ))}
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                <FolderKanban className="size-6 text-rose-400" />
+                Projects
+              </h2>
+              <p className="text-sm text-slate-400 mt-1">
+                Manage projects, assign skills and MCP servers, track progress
+              </p>
             </div>
-          ) : projects.length === 0 ? (
-            <Card className="bg-[#0d1117] border-neutral-800 py-12">
-              <CardContent className="flex flex-col items-center text-center">
-                <FolderKanban className="size-12 text-rose-400/30 mb-4" />
-                <h3 className="text-lg font-medium text-white mb-1">No projects yet</h3>
-                <p className="text-sm text-slate-400 mb-4">Create your first project to get started</p>
-                <Button className="bg-rose-600 hover:bg-rose-700 text-white gap-2" onClick={() => setCreateDialogOpen(true)}>
+            {view === 'detail' ? (
+              <Button
+                variant="outline"
+                onClick={() => { setView('list'); setSelectedProject(null) }}
+                className="border-neutral-700 text-slate-300 gap-2"
+              >
+                <ChevronLeft className="size-4" />
+                Back to Projects
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Button
+                  className="bg-rose-600 hover:bg-rose-700 text-white gap-2"
+                  onClick={() => setCreateDialogOpen(true)}
+                >
                   <Plus className="size-4" />
                   New Project
                 </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {projects.map((project) => (
-                <ProjectCard
-                  key={project.id}
-                  project={project}
-                  onClick={() => handleSelectProject(project)}
+                <CreateProjectDialog
+                  open={createDialogOpen}
+                  onOpenChange={setCreateDialogOpen}
+                  onCreated={handleProjectCreated}
                 />
-              ))}
-            </div>
-          )}
-        </>
-      )}
+              </div>
+            )}
+          </div>
 
-      {/* ─── Detail View ────────────────────────────────────────────────────── */}
-      {view === 'detail' && selectedProject && (
-        <div className="space-y-4">
-          {/* Compact Project Header */}
-          <Card className="bg-[#0d1117] border-neutral-800 py-0">
-            <CardContent className="px-4 py-3">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-2xl shrink-0">{selectedProject.icon || '📁'}</span>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-base font-semibold text-white truncate">{selectedProject.name}</h3>
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] h-5 gap-1 ${STATUS_CONFIG[selectedProject.status].color} ${STATUS_CONFIG[selectedProject.status].bgColor} ${STATUS_CONFIG[selectedProject.status].borderColor}`}
-                      >
+          {/* ─── List View ──────────────────────────────────────────────────────── */}
+          {view === 'list' && (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: 'Total Projects', value: totalProjects, icon: FolderKanban, color: 'text-rose-400' },
+                  { label: 'Active', value: activeProjects, icon: Zap, color: 'text-amber-400' },
+                  { label: 'Planning', value: planningProjects, icon: LayoutGrid, color: 'text-blue-400' },
+                  { label: 'Completed', value: completedProjects, icon: CheckCircle2, color: 'text-emerald-400' },
+                ].map((stat) => (
+                  <Card key={stat.label} className="bg-[#0d1117] border-neutral-800 py-4 shadow-lg shadow-rose-500/5">
+                    <CardContent className="flex items-center gap-3 px-4">
+                      <stat.icon className={`size-5 ${stat.color}`} />
+                      <div>
+                        <p className="text-2xl font-bold text-white">{stat.value}</p>
+                        <p className="text-xs text-slate-400">{stat.label}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {loading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Card key={i} className="bg-[#0d1117] border-neutral-800 animate-pulse py-4">
+                      <CardHeader className="pb-2">
+                        <div className="h-5 bg-neutral-800 rounded w-3/4" />
+                        <div className="h-3 bg-neutral-800/50 rounded w-1/2" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="h-3 bg-neutral-800/30 rounded w-full mb-2" />
+                        <div className="h-3 bg-neutral-800/30 rounded w-2/3" />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : projects.length === 0 ? (
+                <Card className="bg-[#0d1117] border-neutral-800 py-12">
+                  <CardContent className="flex flex-col items-center text-center">
+                    <FolderKanban className="size-12 text-rose-400/30 mb-4" />
+                    <h3 className="text-lg font-medium text-white mb-1">No projects yet</h3>
+                    <p className="text-sm text-slate-400 mb-4">Create your first project to get started</p>
+                    <Button className="bg-rose-600 hover:bg-rose-700 text-white gap-2" onClick={() => setCreateDialogOpen(true)}>
+                      <Plus className="size-4" />
+                      New Project
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {projects.map((project) => (
+                    <ProjectCard
+                      key={project.id}
+                      project={project}
+                      onClick={() => handleSelectProject(project)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ─── Detail View ───────────────────────────────────────────────────── */}
+          {view === 'detail' && selectedProject && (
+            <>
+              {/* Project Header */}
+              <Card className="bg-[#0d1117] border-neutral-800">
+                <CardContent className="p-4">
+                  <div className="flex flex-col gap-4">
+                    {/* Row 1: Project identity + actions */}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="text-3xl shrink-0">{selectedProject.icon || '📁'}</span>
+                        <div className="min-w-0">
+                          {editingProject ? (
+                            <Input
+                              value={editForm.name}
+                              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                              className="bg-neutral-900 border-neutral-700 text-white text-lg font-bold h-8"
+                            />
+                          ) : (
+                            <h3 className="text-lg font-bold text-white truncate">{selectedProject.name}</h3>
+                          )}
+                          {editingProject ? (
+                            <Textarea
+                              value={editForm.description}
+                              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                              className="bg-neutral-900 border-neutral-700 text-white text-xs min-h-[40px] mt-1"
+                            />
+                          ) : (
+                            <p className="text-xs text-slate-400 mt-0.5 line-clamp-2">{selectedProject.description || 'No description'}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {editingProject ? (
+                          <>
+                            <Button size="sm" onClick={saveEdit} className="bg-emerald-600 hover:bg-emerald-700 text-white h-7 text-xs">
+                              Save
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => setEditingProject(false)} className="border-neutral-700 text-slate-300 h-7 text-xs">
+                              Cancel
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button size="sm" variant="outline" onClick={startEditing} className="border-neutral-700 text-slate-300 h-7 text-xs gap-1">
+                              <Edit3 className="size-3" />
+                              Edit
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={handleOrchestrate}
+                              disabled={orchestrating}
+                              className="bg-rose-600 hover:bg-rose-700 text-white h-7 text-xs gap-1"
+                            >
+                              {orchestrating ? <Loader2 className="size-3 animate-spin" /> : <Rocket className="size-3" />}
+                              {orchestrating ? 'Working...' : 'Orchestrate'}
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={openGithubPush} className="border-neutral-700 text-slate-300 h-7 text-xs gap-1">
+                              <Github className="size-3" />
+                              Push
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={handleDownloadZip} disabled={downloading} className="border-neutral-700 text-slate-300 h-7 text-xs gap-1">
+                              {downloading ? <Loader2 className="size-3 animate-spin" /> : <Download className="size-3" />}
+                              ZIP
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploadingFiles} className="border-neutral-700 text-slate-300 h-7 text-xs gap-1">
+                              {uploadingFiles ? <Loader2 className="size-3 animate-spin" /> : <Upload className="size-3" />}
+                              Upload
+                            </Button>
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => e.target.files && handleFileUpload(e.target.files)}
+                            />
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Row 2: Badges */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant="outline" className={`text-[10px] h-5 gap-1 ${STATUS_CONFIG[selectedProject.status].color} ${STATUS_CONFIG[selectedProject.status].bgColor} ${STATUS_CONFIG[selectedProject.status].borderColor}`}>
                         {STATUS_CONFIG[selectedProject.status].icon}
                         {STATUS_CONFIG[selectedProject.status].label}
                       </Badge>
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] h-5 ${PRIORITY_CONFIG[selectedProject.priority].color} ${PRIORITY_CONFIG[selectedProject.priority].bgColor} border-neutral-700`}
-                      >
+                      <Badge variant="outline" className={`text-[10px] h-5 ${PRIORITY_CONFIG[selectedProject.priority].color} ${PRIORITY_CONFIG[selectedProject.priority].bgColor} border-neutral-700`}>
                         {PRIORITY_CONFIG[selectedProject.priority].label}
                       </Badge>
                       {selectedProject.category && (
@@ -1713,905 +1851,985 @@ export default function ProjectsModule() {
                           {selectedProject.category}
                         </Badge>
                       )}
-                      {/* Orchestration status indicator */}
-                      {orchestrating && (
-                        <Badge className="text-[10px] h-5 gap-1 bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">
-                          <Loader2 className="size-2.5 animate-spin" />
-                          Orchestrating...
+
+                      {/* Orchestrator status badge */}
+                      {selectedProject.orchestratorStatus && selectedProject.orchestratorStatus !== 'pending' && (
+                        <Badge variant="outline" className={cn(
+                          'text-[10px] h-5 gap-1',
+                          selectedProject.orchestratorStatus === 'completed' ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20' :
+                          selectedProject.orchestratorStatus === 'failed' ? 'text-red-300 bg-red-500/10 border-red-500/20' :
+                          'text-amber-300 bg-amber-500/10 border-amber-500/20'
+                        )}>
+                          <Bot className="size-2.5" />
+                          {selectedProject.orchestratorStatus === 'completed' ? 'Orchestrated' :
+                           selectedProject.orchestratorStatus === 'failed' ? 'Failed' :
+                           `${selectedProject.orchestratorStatus.charAt(0).toUpperCase() + selectedProject.orchestratorStatus.slice(1)}...`}
+                          {['analyzing', 'assigning', 'discussing', 'working'].includes(selectedProject.orchestratorStatus) && (
+                            <Loader2 className="size-2.5 animate-spin" />
+                          )}
                         </Badge>
                       )}
-                      {orchestrationResult && !orchestrating && (
-                        <Badge className="text-[10px] h-5 gap-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                          ✅ Orchestrated
-                        </Badge>
+
+                      {/* GitHub status */}
+                      {selectedProject.githubStatus === 'pushed' && selectedProject.githubRepoUrl && (
+                        <a href={selectedProject.githubRepoUrl} target="_blank" rel="noopener noreferrer">
+                          <Badge variant="outline" className="text-[10px] h-5 gap-1 text-emerald-300 bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20">
+                            <Github className="size-2.5" />
+                            Pushed
+                            <ExternalLink className="size-2" />
+                          </Badge>
+                        </a>
                       )}
-                      {/* GitHub status badge */}
-                      {getGithubBadge()}
+
+                      {/* Quick status change */}
+                      <Select value={selectedProject.status} onValueChange={(v) => handleStatusChangeRequest(v as ProjectStatus)}>
+                        <SelectTrigger className="h-5 w-[100px] text-[10px] bg-transparent border-neutral-700 text-slate-400">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-neutral-900 border-neutral-700">
+                          {STATUS_OPTIONS.map((s) => (
+                            <SelectItem key={s} value={s} className="text-white focus:bg-neutral-800 focus:text-white text-xs">
+                              {STATUS_CONFIG[s].label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <p className="text-xs text-slate-400 mt-0.5 truncate">{selectedProject.description || 'No description'}</p>
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                  {/* Orchestrate button */}
-                  <Button
-                    size="sm"
-                    onClick={handleOrchestrate}
-                    disabled={orchestrating}
-                    className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5 h-7 text-xs"
-                  >
-                    {orchestrating ? (
-                      <Loader2 className="size-3 animate-spin" />
-                    ) : (
-                      <Rocket className="size-3" />
-                    )}
-                    {orchestrating ? 'Orchestrating...' : '🚀 Orchestrate'}
-                  </Button>
-
-                  {/* Push to GitHub button */}
-                  {(selectedProject.status === 'completed' || selectedProject.status === 'in_progress') && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={openGithubPush}
-                      disabled={pushing}
-                      className="border-neutral-700 text-slate-300 hover:text-white gap-1.5 h-7 text-xs"
-                    >
-                      {pushing ? (
-                        <Loader2 className="size-3 animate-spin" />
-                      ) : (
-                        <Upload className="size-3" />
-                      )}
-                      Push to GitHub
-                    </Button>
-                  )}
-
-                  <Select
-                    value={selectedProject.status}
-                    onValueChange={(v) => handleStatusChangeRequest(v as ProjectStatus)}
-                  >
-                    <SelectTrigger className="bg-neutral-900 border-neutral-700 text-white h-7 text-xs w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-neutral-900 border-neutral-700">
-                      {STATUS_OPTIONS.map((s) => (
-                        <SelectItem key={s} value={s} className="text-white focus:bg-neutral-800 focus:text-white text-xs">
-                          {STATUS_CONFIG[s].label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button variant="outline" size="sm" onClick={startEditing} className="border-neutral-700 text-slate-300 gap-1 h-7 text-xs">
-                    <Edit3 className="size-3" />Edit
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => handleDeleteProject(selectedProject.id)} className="border-red-500/30 text-red-400 hover:bg-red-500/10 h-7 w-7 p-0">
-                    <Trash2 className="size-3" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Progress bar */}
-              {selectedProject.tasks && selectedProject.tasks.length > 0 && (
-                <div className="mt-3 space-y-1">
-                  <div className="flex items-center justify-between text-[10px]">
-                    <span className="text-slate-400">{selectedProject.tasks.filter(t => t.status === 'done').length}/{selectedProject.tasks.length} tasks</span>
-                    <span className="text-rose-400 font-medium">{calculateProgress(selectedProject.tasks)}%</span>
-                  </div>
-                  <Progress value={calculateProgress(selectedProject.tasks)} className="h-1.5 bg-neutral-800 [&>div]:bg-gradient-to-r [&>div]:from-rose-500 [&>div]:to-pink-500" />
-                </div>
-              )}
-
-              {/* Orchestration loading overlay */}
-              {orchestrating && (
-                <div className="mt-3 flex items-center gap-2 text-xs text-amber-400 animate-pulse bg-amber-500/5 rounded-lg p-2 border border-amber-500/20">
-                  <Loader2 className="size-3 animate-spin" />
-                  <span>🤖 Orchestrating project... Agents are analyzing and dividing tasks</span>
-                </div>
-              )}
-
-              {/* AI indicator */}
-              {aiAnalyzing && (
-                <div className="mt-3 flex items-center gap-2 text-xs text-violet-400 animate-pulse bg-violet-500/5 rounded-lg p-2 border border-violet-500/20">
-                  <Loader2 className="size-3 animate-spin" />
-                  <span>AI is analyzing your project and generating tasks...</span>
-                </div>
-              )}
-
-              {/* Orchestration result */}
-              {orchestrationResult && !orchestrating && (
-                <div className="mt-3 flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/5 rounded-lg p-2 border border-emerald-500/20">
-                  <CheckCircle2 className="size-3" />
-                  <span>✨ Orchestration complete: {orchestrationResult.tasksCreated} tasks created, {orchestrationResult.agentCount} agents assigned</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Edit Dialog */}
-          <Dialog open={editingProject} onOpenChange={setEditingProject}>
-            <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-lg max-h-[85vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle className="text-rose-400">Edit Project</DialogTitle>
-                <DialogDescription className="text-slate-400">Update project details</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-2">
-                <div className="space-y-2">
-                  <Label className="text-slate-300">Name</Label>
-                  <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="bg-neutral-900 border-neutral-700 text-white" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-slate-300">Description</Label>
-                  <Textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="bg-neutral-900 border-neutral-700 text-white min-h-20" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-slate-300">Category</Label>
-                    <Select value={editForm.category} onValueChange={(v) => setEditForm({ ...editForm, category: v })}>
-                      <SelectTrigger className="bg-neutral-900 border-neutral-700 text-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-neutral-900 border-neutral-700">
-                        {CATEGORY_OPTIONS.map((cat) => (
-                          <SelectItem key={cat} value={cat} className="text-white focus:bg-neutral-800 focus:text-white">
-                            {cat}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-slate-300">Priority</Label>
-                    <Select value={editForm.priority} onValueChange={(v) => setEditForm({ ...editForm, priority: v as ProjectPriority })}>
-                      <SelectTrigger className="bg-neutral-900 border-neutral-700 text-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-neutral-900 border-neutral-700">
-                        {PRIORITY_OPTIONS.map((p) => (
-                          <SelectItem key={p} value={p} className="text-white focus:bg-neutral-800 focus:text-white">
-                            {PRIORITY_CONFIG[p].label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-slate-300">Icon</Label>
-                  <Input value={editForm.icon} onChange={(e) => setEditForm({ ...editForm, icon: e.target.value })} className="bg-neutral-900 border-neutral-700 text-white w-20" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-slate-300">Requirements</Label>
-                  <Textarea value={editForm.requirements} onChange={(e) => setEditForm({ ...editForm, requirements: e.target.value })} className="bg-neutral-900 border-neutral-700 text-white min-h-16" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-slate-300">Notes</Label>
-                  <Textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} className="bg-neutral-900 border-neutral-700 text-white min-h-16" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-slate-300">Due Date</Label>
-                  <Input type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} className="bg-neutral-900 border-neutral-700 text-white" />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setEditingProject(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
-                <Button onClick={saveEdit} className="bg-rose-600 hover:bg-rose-700 text-white">Save Changes</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          {/* Status Change Confirmation */}
-          <StatusChangeDialog
-            open={statusChangeDialogOpen}
-            onOpenChange={setStatusChangeDialogOpen}
-            newStatus={pendingStatus}
-            onConfirm={() => {
-              if (pendingStatus) applyStatusChange(pendingStatus)
-              setPendingStatus(null)
-            }}
-          />
-
-          {/* ── 3-Column Layout ─────────────────────────────────────────────── */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-            {/* ── LEFT PANEL: Agent Activity ──────────────────────────────── */}
-            <Card className="bg-[#0d1117] border-neutral-800 py-0">
-              <CardHeader className="pb-2 pt-4 px-4">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm text-white flex items-center gap-2">
-                    <Bot className="size-4 text-rose-400" />
-                    Agent Activity
-                  </CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Badge className="bg-red-500/20 text-red-400 border border-red-500/30 text-[9px] h-5 gap-1 animate-pulse">
-                      <span className="size-1.5 rounded-full bg-red-400 animate-ping" />
-                      LIVE
-                    </Badge>
-                    <Badge variant="outline" className="text-[9px] h-5 text-slate-400 border-neutral-700 gap-1">
-                      <Users className="size-2.5" />
-                      {agentActivities.filter(a => a.status === 'active' || a.status === 'busy').length} active
-                    </Badge>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="px-4 pb-4">
-                <ScrollArea className="h-[500px]">
-                  <div className="space-y-1.5">
-                    {agentActivities.length === 0 ? (
-                      <div className="flex flex-col items-center py-8 text-slate-500">
-                        <Bot className="size-8 mb-2 opacity-30" />
-                        <p className="text-xs">No agent activity yet</p>
-                        <p className="text-[10px] text-slate-600">Run orchestration to assign agents</p>
+                    {/* Row 3: Progress */}
+                    {((selectedProject.tasks?.length ?? 0) > 0) && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-slate-400">Overall Progress</span>
+                          <span className="text-rose-400 font-medium">{calculateProgress(selectedProject.tasks)}%</span>
+                        </div>
+                        <Progress value={calculateProgress(selectedProject.tasks)} className="h-2 bg-neutral-800 [&>div]:bg-gradient-to-r [&>div]:from-rose-500 [&>div]:to-pink-500" />
                       </div>
-                    ) : (
-                      agentActivities.map((activity) => {
-                        const colors = getAgentColor(activity.agentType)
-                        const avatar = getAgentAvatar(activity.agentType)
-                        return (
-                          <div
-                            key={activity.id}
-                            className="flex items-start gap-2 p-2 rounded-lg border border-neutral-800/50 bg-neutral-900/30 hover:bg-neutral-800/50 hover:border-neutral-700 transition-all"
-                          >
-                            <div className={`shrink-0 size-6 rounded-full ${colors.bg} flex items-center justify-center mt-0.5 text-xs`}>
-                              {avatar}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5">
-                                <span className={`text-xs font-medium ${colors.text}`}>{activity.agentName}</span>
-                                <Badge variant="outline" className={`text-[7px] h-3 px-1 ${colors.text} ${colors.bg} ${colors.border}`}>
-                                  {activity.agentType}
-                                </Badge>
-                                <span className={`size-1.5 rounded-full shrink-0 ${getStatusDot(activity.status)}`} />
-                              </div>
-                              <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">{activity.action}</p>
-                              <span className="text-[9px] text-slate-600">{formatRelativeTime(activity.timestamp)}</span>
-                            </div>
-                          </div>
-                        )
-                      })
                     )}
                   </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-
-            {/* ── CENTER PANEL: Project Overview + Tasks ─────────────────── */}
-            <div className="space-y-4">
-              {/* Quick Stats */}
-              <div className="grid grid-cols-3 gap-2">
-                <Card className="bg-[#0d1117] border-neutral-800 py-2">
-                  <CardContent className="flex items-center gap-2 px-3">
-                    <ListChecks className="size-4 text-amber-400" />
-                    <div>
-                      <p className="text-sm font-bold text-white">{selectedProject.tasks?.length ?? selectedProject._count?.tasks ?? 0}</p>
-                      <p className="text-[10px] text-slate-400">Tasks</p>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-[#0d1117] border-neutral-800 py-2">
-                  <CardContent className="flex items-center gap-2 px-3">
-                    <Sparkles className="size-4 text-violet-400" />
-                    <div>
-                      <p className="text-sm font-bold text-white">{selectedProject.skills?.length ?? selectedProject._count?.skills ?? 0}</p>
-                      <p className="text-[10px] text-slate-400">Skills</p>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-[#0d1117] border-neutral-800 py-2">
-                  <CardContent className="flex items-center gap-2 px-3">
-                    <Server className="size-4 text-cyan-400" />
-                    <div>
-                      <p className="text-sm font-bold text-white">{selectedProject.mcpServers?.length ?? selectedProject._count?.mcpServers ?? 0}</p>
-                      <p className="text-[10px] text-slate-400">MCP</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Project Info */}
-              <Card className="bg-[#0d1117] border-neutral-800 py-0">
-                <CardHeader className="pb-2 pt-3 px-4">
-                  <CardTitle className="text-xs text-white flex items-center gap-2">
-                    <FolderKanban className="size-3.5 text-rose-400" />
-                    Project Details
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="px-4 pb-3 space-y-2">
-                  {selectedProject.category && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Category</span>
-                      <Badge variant="outline" className="text-[10px] h-4 text-rose-300 bg-rose-500/10 border-rose-500/20">{selectedProject.category}</Badge>
-                    </div>
-                  )}
-                  {selectedProject.dueDate && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Due Date</span>
-                      <span className="text-slate-300 flex items-center gap-1"><Calendar className="size-3" />{formatDate(selectedProject.dueDate)}</span>
-                    </div>
-                  )}
-                  {parseTechStack(selectedProject.techStack).length > 0 && (
-                    <div className="pt-1">
-                      <span className="text-[10px] text-slate-400 block mb-1">Tech Stack</span>
-                      <div className="flex flex-wrap gap-1">
-                        {parseTechStack(selectedProject.techStack).map((tech) => (
-                          <Badge key={tech} variant="outline" className="text-[9px] h-4 border-neutral-700 text-slate-300 bg-neutral-800/50">{tech}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {/* GitHub link if pushed */}
-                  {selectedProject.githubRepoUrl && (
-                    <div className="pt-1">
-                      <a
-                        href={selectedProject.githubRepoUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
-                      >
-                        <GitBranch className="size-3" />
-                        {selectedProject.githubRepoUrl.replace('https://github.com/', '')}
-                        <ExternalLink className="size-2.5" />
-                      </a>
-                    </div>
-                  )}
                 </CardContent>
               </Card>
 
-              {/* Tasks */}
-              <Card className="bg-[#0d1117] border-neutral-800 py-0">
-                <CardHeader className="pb-2 pt-3 px-4">
-                  <CardTitle className="text-xs text-white flex items-center gap-2">
-                    <ListChecks className="size-3.5 text-rose-400" />
-                    Tasks
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="px-4 pb-3 space-y-2">
-                  {/* Add task */}
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="New task..."
-                      value={newTaskTitle}
-                      onChange={(e) => setNewTaskTitle(e.target.value)}
-                      className="bg-neutral-900 border-neutral-700 text-white flex-1 h-8 text-xs"
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleAddTask() }}
-                    />
-                    <Button onClick={handleAddTask} disabled={!newTaskTitle.trim()} size="sm" className="bg-rose-600 hover:bg-rose-700 text-white gap-1 h-8 text-xs">
-                      <Plus className="size-3" />Add
-                    </Button>
-                  </div>
+              {/* Tabbed Content */}
+              <Tabs value={detailTab} onValueChange={setDetailTab} className="space-y-4">
+                <TabsList className="bg-neutral-900 border border-neutral-800 h-9 p-1">
+                  <TabsTrigger value="pipeline" className="text-xs gap-1 data-[state=active]:bg-rose-600/20 data-[state=active]:text-rose-400">
+                    <Activity className="size-3" />
+                    Pipeline
+                  </TabsTrigger>
+                  <TabsTrigger value="tasks" className="text-xs gap-1 data-[state=active]:bg-rose-600/20 data-[state=active]:text-rose-400">
+                    <ClipboardList className="size-3" />
+                    Tasks & Agents
+                  </TabsTrigger>
+                  <TabsTrigger value="discussion" className="text-xs gap-1 data-[state=active]:bg-rose-600/20 data-[state=active]:text-rose-400">
+                    <MessageSquare className="size-3" />
+                    Discussion
+                  </TabsTrigger>
+                  <TabsTrigger value="files" className="text-xs gap-1 data-[state=active]:bg-rose-600/20 data-[state=active]:text-rose-400">
+                    <File className="size-3" />
+                    Files
+                  </TabsTrigger>
+                  <TabsTrigger value="export" className="text-xs gap-1 data-[state=active]:bg-rose-600/20 data-[state=active]:text-rose-400">
+                    <Globe className="size-3" />
+                    Export
+                  </TabsTrigger>
+                </TabsList>
 
-                  {/* Action buttons row */}
-                  <div className="flex gap-2">
-                    {/* AI Generate */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleAiAnalyze}
-                      disabled={aiAnalyzing || !(selectedProject.description || selectedProject.requirements)}
-                      className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 gap-1.5 h-7 text-[10px] flex-1"
-                    >
-                      <Sparkles className="size-3" />
-                      {aiAnalyzing ? 'Generating...' : 'AI Generate'}
-                    </Button>
-                    {/* Orchestrate (compact) */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleOrchestrate}
-                      disabled={orchestrating}
-                      className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 gap-1.5 h-7 text-[10px] flex-1"
-                    >
-                      <Rocket className="size-3" />
-                      {orchestrating ? 'Working...' : 'Orchestrate'}
-                    </Button>
-                  </div>
-                  {aiTasksGenerated > 0 && !aiAnalyzing && (
-                    <span className="text-[10px] text-emerald-400 block">✨ {aiTasksGenerated} tasks generated by AI</span>
-                  )}
-                  {aiError && (
-                    <span className="text-[10px] text-red-400 block">{aiError}</span>
-                  )}
+                {/* ─── Pipeline Tab ────────────────────────────────────────── */}
+                <TabsContent value="pipeline">
+                  <Card className="bg-[#0d1117] border-neutral-800">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm text-white flex items-center gap-2">
+                        <Activity className="size-4 text-rose-400" />
+                        Orchestrator Pipeline
+                      </CardTitle>
+                      <CardDescription className="text-xs text-slate-400">
+                        Track the orchestrator&apos;s progress through each stage
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      {/* Pipeline visualization */}
+                      <div className="flex items-center justify-between gap-2 overflow-x-auto pb-2">
+                        {PIPELINE_STAGES.map((stage, idx) => {
+                          const currentIdx = getPipelineStageIndex(selectedProject.orchestratorStatus)
+                          const isCompleted = currentIdx >= 0 && idx < currentIdx
+                          const isActive = currentIdx >= 0 && idx === currentIdx
+                          const isPending = currentIdx < 0 || idx > currentIdx
 
-                  <Separator className="bg-neutral-800" />
-
-                  {/* Task list */}
-                  {(!selectedProject.tasks || selectedProject.tasks.length === 0) ? (
-                    <div className="flex flex-col items-center py-4 text-slate-500">
-                      <ListChecks className="size-6 mb-1 opacity-50" />
-                      <p className="text-xs">No tasks yet</p>
-                      <p className="text-[10px] text-slate-600">Use Orchestrate or AI Generate to create tasks</p>
-                    </div>
-                  ) : (
-                    <ScrollArea className="max-h-64">
-                      <div className="space-y-1.5">
-                        {selectedProject.tasks.map((task) => {
-                          const assigneeColors = task.assignee ? getAgentColor(task.assignee.type) : null
-                          const assigneeAvatar = task.assignee ? getAgentAvatar(task.assignee.type) : null
                           return (
-                            <div
-                              key={task.id}
-                              className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900/50 p-2 transition-all hover:border-neutral-700"
-                            >
-                              <button
-                                className={`size-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
-                                  task.status === 'done'
-                                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
-                                    : 'border-neutral-600 hover:border-rose-500/40'
-                                }`}
-                                onClick={() => handleToggleTask(task.id)}
-                              >
-                                {task.status === 'done' && <CheckCircle2 className="size-2.5" />}
-                              </button>
-                              <div className="min-w-0 flex-1">
-                                <p className={`text-xs ${task.status === 'done' ? 'text-slate-500 line-through' : 'text-white'}`}>
-                                  {task.title}
-                                </p>
-                                {/* Agent assignment display */}
-                                {task.assignee && (
-                                  <div className="flex items-center gap-1 mt-0.5">
-                                    <span className="text-[9px]">{assigneeAvatar}</span>
-                                    <span className={`text-[9px] ${assigneeColors?.text || 'text-slate-400'}`}>
-                                      {task.assignee.name}
-                                    </span>
-                                    <Badge variant="outline" className={`text-[7px] h-3 px-0.5 ${assigneeColors?.text || ''} ${assigneeColors?.bg || ''} ${assigneeColors?.border || ''}`}>
-                                      {task.assignee.type}
-                                    </Badge>
-                                  </div>
-                                )}
-                              </div>
-                              <Badge
-                                variant="outline"
-                                className={`text-[8px] h-3.5 px-1 shrink-0 ${
-                                  task.status === 'todo'
-                                    ? 'text-slate-400 border-neutral-700'
-                                    : task.status === 'in_progress'
-                                      ? 'text-amber-400 border-amber-500/30 bg-amber-500/10'
-                                      : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
-                                }`}
-                              >
-                                {task.status === 'todo' ? 'To Do' : task.status === 'in_progress' ? 'In Progress' : 'Done'}
-                              </Badge>
+                            <div key={stage.key} className="flex items-center gap-2">
+                              <PipelineStep stage={stage} isActive={isActive} isCompleted={isCompleted} isPending={isPending} />
+                              {idx < PIPELINE_STAGES.length - 1 && (
+                                <div className={cn(
+                                  'w-6 h-0.5 shrink-0 transition-colors duration-500',
+                                  isCompleted ? 'bg-emerald-500' : isActive ? 'bg-rose-500/50' : 'bg-neutral-700'
+                                )} />
+                              )}
                             </div>
                           )
                         })}
                       </div>
-                    </ScrollArea>
-                  )}
-                </CardContent>
-              </Card>
 
-              {/* Automation Tools */}
-              <Card className="bg-[#0d1117] border-neutral-800 py-0">
-                <CardHeader className="pb-2 pt-3 px-4">
-                  <CardTitle className="text-xs text-white flex items-center gap-2">
-                    <Wrench className="size-3.5 text-rose-400" />
-                    Automation Tools
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="px-4 pb-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    {AUTOMATION_TOOLS.map((tool) => (
-                      <div
-                        key={tool.name}
-                        className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900/50 p-2 transition-all hover:border-rose-500/30 hover:bg-neutral-900/80 cursor-pointer group"
-                        onClick={() => window.open(tool.url, '_blank')}
-                      >
-                        <span className="text-lg">{tool.icon}</span>
-                        <div className="min-w-0">
-                          <span className="text-[10px] font-medium text-slate-300 group-hover:text-rose-300 transition-colors block truncate">{tool.name}</span>
-                          <span className="text-[8px] text-slate-500 line-clamp-1">{tool.description}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Skills & MCP inline */}
-              <Card className="bg-[#0d1117] border-neutral-800 py-0">
-                <CardHeader className="pb-2 pt-3 px-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-xs text-white flex items-center gap-2">
-                      <Sparkles className="size-3.5 text-rose-400" />
-                      Skills & MCP Servers
-                    </CardTitle>
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="outline" onClick={() => setAddSkillDialogOpen(true)} className="border-rose-500/30 text-rose-400 hover:bg-rose-500/10 h-6 text-[9px] px-2">
-                        <Plus className="size-2.5" />Skill
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setAddMcpDialogOpen(true)} className="border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 h-6 text-[9px] px-2">
-                        <Plus className="size-2.5" />MCP
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="px-4 pb-3 space-y-2">
-                  {/* Skills */}
-                  {selectedProject.skills && selectedProject.skills.length > 0 ? (
-                    <div className="space-y-1">
-                      {selectedProject.skills.map((sa) => (
-                        <div key={sa.id} className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-900/50 p-1.5">
-                          <div className="min-w-0 flex-1">
-                            <span className="text-[11px] text-white">{sa.skill?.name || `Skill ${sa.skillId}`}</span>
-                            {sa.role && <Badge variant="outline" className="text-[8px] h-3.5 ml-1 px-1 border-violet-500/30 text-violet-400 bg-violet-500/10">{sa.role}</Badge>}
-                          </div>
-                          <Button variant="ghost" size="sm" onClick={() => handleRemoveSkill(sa.skillId)} className="text-red-400 hover:text-red-300 h-5 w-5 p-0 shrink-0">
-                            <Trash2 className="size-2.5" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[10px] text-slate-500 italic">No skills assigned</p>
-                  )}
-
-                  <Separator className="bg-neutral-800" />
-
-                  {/* MCP Servers */}
-                  {selectedProject.mcpServers && selectedProject.mcpServers.length > 0 ? (
-                    <div className="space-y-1">
-                      {selectedProject.mcpServers.map((ma) => (
-                        <div key={ma.id} className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-900/50 p-1.5">
-                          <div className="min-w-0 flex-1">
-                            <span className="text-[11px] text-white">{ma.mcpServer?.name || `MCP ${ma.mcpServerId}`}</span>
-                            {ma.role && <Badge variant="outline" className="text-[8px] h-3.5 ml-1 px-1 border-cyan-500/30 text-cyan-400 bg-cyan-500/10">{ma.role}</Badge>}
-                          </div>
-                          <Button variant="ghost" size="sm" onClick={() => handleRemoveMcp(ma.mcpServerId)} className="text-red-400 hover:text-red-300 h-5 w-5 p-0 shrink-0">
-                            <Trash2 className="size-2.5" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[10px] text-slate-500 italic">No MCP servers assigned</p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* ── RIGHT PANEL: Code Explorer + Agent Chat ────────────────── */}
-            <Card className="bg-[#0d1117] border-neutral-800 py-0">
-              <CardHeader className="pb-2 pt-4 px-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1 bg-neutral-900 rounded-lg border border-neutral-800 p-0.5">
-                    <button
-                      className={`px-3 py-1 rounded-md text-xs transition-colors ${detailTab === 'code' ? 'bg-rose-600/20 text-rose-400' : 'text-slate-400 hover:text-white'}`}
-                      onClick={() => setDetailTab('code')}
-                    >
-                      <FileCode className="size-3 inline mr-1" />
-                      Code
-                    </button>
-                    <button
-                      className={`px-3 py-1 rounded-md text-xs transition-colors ${detailTab === 'chat' ? 'bg-rose-600/20 text-rose-400' : 'text-slate-400 hover:text-white'}`}
-                      onClick={() => setDetailTab('chat')}
-                    >
-                      <MessageSquare className="size-3 inline mr-1" />
-                      Chat
-                    </button>
-                  </div>
-                  {detailTab === 'chat' && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleGenerateDiscussion}
-                      disabled={generatingDiscussion}
-                      className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 gap-1 h-6 text-[9px] px-2"
-                    >
-                      {generatingDiscussion ? (
-                        <Loader2 className="size-2.5 animate-spin" />
-                      ) : (
-                        <RefreshCw className="size-2.5" />
-                      )}
-                      Generate Discussion
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="px-4 pb-4">
-                {detailTab === 'code' ? (
-                  /* ── Code Explorer ── */
-                  <ScrollArea className="h-[500px]">
-                    <div className="space-y-0.5">
-                      {renderFileTree(generateFileTree(selectedProject))}
-                    </div>
-                  </ScrollArea>
-                ) : (
-                  /* ── Agent Discussion / Chat ── */
-                  <ScrollArea className="h-[500px]">
-                    <div className="space-y-3">
-                      {agentMessages.length === 0 ? (
-                        <div className="flex flex-col items-center py-8 text-slate-500">
-                          <MessageSquare className="size-8 mb-2 opacity-30" />
-                          <p className="text-xs">No agent discussions yet</p>
-                          <p className="text-[10px] text-slate-600 mt-1">Run orchestration or click &quot;Generate Discussion&quot;</p>
-                        </div>
-                      ) : (
-                        agentMessages.map((msg) => {
-                          const colors = getAgentColor(msg.fromType)
-                          const avatar = getAgentAvatar(msg.fromType)
-                          return (
-                            <div key={msg.id} className="flex gap-2">
-                              <div className={`shrink-0 size-6 rounded-full ${colors.bg} flex items-center justify-center mt-0.5 text-xs`}>
-                                {avatar}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2 mb-0.5">
-                                  <span className={`text-xs font-medium ${colors.text}`}>{msg.from}</span>
-                                  <Badge variant="outline" className={`text-[7px] h-3 px-0.5 ${colors.text} ${colors.bg} ${colors.border}`}>
-                                    {msg.fromType}
-                                  </Badge>
-                                  <span className="text-[9px] text-slate-600">{formatRelativeTime(msg.timestamp)}</span>
-                                </div>
-                                <div className={`rounded-lg ${colors.bg} border ${colors.border} p-2`}>
-                                  <p className="text-xs text-slate-300 leading-relaxed">{msg.content}</p>
-                                </div>
+                      {/* Current stage detail */}
+                      {selectedProject.orchestratorStatus && selectedProject.orchestratorStatus !== 'pending' && (
+                        <div className="bg-neutral-900/50 rounded-lg p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg">
+                                {PIPELINE_STAGES.find(s => s.key === selectedProject.orchestratorStatus)?.emoji || '🔄'}
+                              </span>
+                              <div>
+                                <p className="text-sm font-medium text-white">
+                                  Stage: {PIPELINE_STAGES.find(s => s.key === selectedProject.orchestratorStatus)?.label || selectedProject.orchestratorStatus}
+                                </p>
+                                {selectedProject.orchestratorStartedAt && (
+                                  <p className="text-[10px] text-slate-500">
+                                    Started {formatRelativeTime(selectedProject.orchestratorStartedAt)}
+                                  </p>
+                                )}
                               </div>
                             </div>
-                          )
-                        })
+                            {selectedProject.orchestratorCompletedAt && (
+                              <Badge variant="outline" className="text-[10px] h-5 text-emerald-300 bg-emerald-500/10 border-emerald-500/20">
+                                Completed {formatRelativeTime(selectedProject.orchestratorCompletedAt)}
+                              </Badge>
+                            )}
+                          </div>
+
+                          {/* Activity feed from activities */}
+                          {selectedProject.activities && selectedProject.activities.length > 0 && (
+                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                              <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Recent Activity</p>
+                              {selectedProject.activities.slice(0, 10).map((activity) => {
+                                const colors = getAgentColor(activity.agentType)
+                                const avatar = getAgentAvatar(activity.agentType)
+                                return (
+                                  <div key={activity.id} className="flex items-start gap-2 text-xs">
+                                    <span className="shrink-0">{avatar}</span>
+                                    <div className="min-w-0">
+                                      <span className={cn('font-medium', colors.text)}>{activity.agentName}</span>
+                                      <span className="text-slate-400 ml-1">{activity.action}</span>
+                                      <span className="text-slate-600 ml-1 text-[10px]">{formatRelativeTime(activity.timestamp)}</span>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
                       )}
-                    </div>
-                  </ScrollArea>
-                )}
-              </CardContent>
-            </Card>
-          </div>
 
-          {/* ── GitHub Setup Dialog ── */}
-          <Dialog open={githubSetupDialogOpen} onOpenChange={setGithubSetupDialogOpen}>
-            <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-md">
-              <DialogHeader>
-                <DialogTitle className="text-rose-400 flex items-center gap-2">
-                  <Github className="size-5" />
-                  Connect GitHub
-                </DialogTitle>
-                <DialogDescription className="text-slate-400">
-                  Configure your GitHub integration to push projects to repositories
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-2">
-                <div className="space-y-2">
-                  <Label className="text-slate-300">Personal Access Token</Label>
-                  <Input
-                    type="password"
-                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                    value={githubToken}
-                    onChange={(e) => setGithubToken(e.target.value)}
-                    className="bg-neutral-900 border-neutral-700 text-white"
-                  />
-                  <p className="text-[10px] text-slate-500">Needs repo scope. Create one at Settings → Developer settings → Personal access tokens</p>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-slate-300">GitHub Username</Label>
-                  <Input
-                    placeholder="your-username"
-                    value={githubSetupUsername}
-                    onChange={(e) => setGithubSetupUsername(e.target.value)}
-                    className="bg-neutral-900 border-neutral-700 text-white"
-                  />
-                </div>
-                {githubSetupError && (
-                  <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/5 rounded-lg p-2 border border-red-500/20">
-                    <AlertCircle className="size-3 shrink-0" />
-                    {githubSetupError}
-                  </div>
-                )}
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setGithubSetupDialogOpen(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
-                <Button
-                  onClick={handleGithubSetup}
-                  disabled={githubSettingUp || !githubToken.trim() || !githubSetupUsername.trim()}
-                  className="bg-rose-600 hover:bg-rose-700 text-white"
-                >
-                  {githubSettingUp ? 'Verifying...' : 'Connect GitHub'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                      {/* No orchestration yet */}
+                      {(!selectedProject.orchestratorStatus || selectedProject.orchestratorStatus === 'pending') && (
+                        <div className="flex flex-col items-center justify-center py-12 gap-4">
+                          <div className="w-16 h-16 rounded-full bg-rose-500/10 border-2 border-rose-500/20 flex items-center justify-center">
+                            <Rocket className="size-8 text-rose-400" />
+                          </div>
+                          <div className="text-center">
+                            <p className="text-sm font-medium text-white">No Orchestration Yet</p>
+                            <p className="text-xs text-slate-400 mt-1">Launch the orchestrator to analyze, assign, and distribute tasks to agents</p>
+                          </div>
+                          <Button
+                            onClick={handleOrchestrate}
+                            disabled={orchestrating}
+                            className="bg-rose-600 hover:bg-rose-700 text-white gap-2"
+                          >
+                            {orchestrating ? <Loader2 className="size-4 animate-spin" /> : <Rocket className="size-4" />}
+                            {orchestrating ? 'Launching...' : '🚀 Launch Orchestrator'}
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
 
-          {/* ── GitHub Push Dialog ── */}
-          <Dialog open={githubPushDialogOpen} onOpenChange={setGithubPushDialogOpen}>
-            <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-md">
-              <DialogHeader>
-                <DialogTitle className="text-rose-400 flex items-center gap-2">
-                  <Upload className="size-5" />
-                  Push to GitHub
-                </DialogTitle>
-                <DialogDescription className="text-slate-400">
-                  Push your project files to a GitHub repository
-                </DialogDescription>
-              </DialogHeader>
-              {pushResult ? (
-                <div className="space-y-3 py-4">
-                  <div className="flex items-center gap-2 text-emerald-400 text-sm">
-                    <CheckCircle2 className="size-5" />
-                    Successfully pushed!
-                  </div>
-                  <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-3 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Files pushed</span>
-                      <span className="text-white font-medium">{pushResult.filesPushed}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Repository</span>
-                      <a
-                        href={pushResult.repoUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
+                {/* ─── Tasks & Agents Tab ───────────────────────────────────── */}
+                <TabsContent value="tasks">
+                  <Card className="bg-[#0d1117] border-neutral-800">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-sm text-white flex items-center gap-2">
+                            <ClipboardList className="size-4 text-rose-400" />
+                            Tasks & Agents
+                          </CardTitle>
+                          <CardDescription className="text-xs text-slate-400">
+                            {selectedProject.tasks?.length || 0} tasks assigned to agents
+                          </CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" variant="outline" onClick={handleAiAnalyze} disabled={aiAnalyzing} className="border-neutral-700 text-slate-300 h-7 text-xs gap-1">
+                            {aiAnalyzing ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
+                            AI Analyze
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {aiError && (
+                        <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded p-2">
+                          <AlertCircle className="size-3 shrink-0" />
+                          {aiError}
+                        </div>
+                      )}
+
+                      {/* Tasks grouped by agent */}
+                      {selectedProject.tasks && selectedProject.tasks.length > 0 ? (
+                        <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                          {selectedProject.tasks.map((task) => {
+                            const isExpanded = expandedTasks.has(task.id)
+                            const assigneeColors = task.assignee ? getAgentColor(task.assignee.type) : null
+                            const assigneeAvatar = task.assignee ? getAgentAvatar(task.assignee.type) : null
+
+                            // Find instruction for this task
+                            const instruction = selectedProject.activities?.find(
+                              a => a.type === 'instruction' && a.agentId === task.assignedTo
+                            )
+
+                            return (
+                              <div key={task.id} className="bg-neutral-900/50 rounded-lg border border-neutral-800">
+                                <button
+                                  className="w-full p-3 flex items-center gap-3 text-left"
+                                  onClick={() => toggleTaskExpand(task.id)}
+                                >
+                                  {/* Task status checkbox */}
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleToggleTask(task.id) }}
+                                    className={cn(
+                                      'size-4 rounded border shrink-0 flex items-center justify-center transition-colors',
+                                      task.status === 'done' ? 'bg-emerald-600 border-emerald-500' : 'border-neutral-600 hover:border-rose-500'
+                                    )}
+                                  >
+                                    {task.status === 'done' && <CheckCircle2 className="size-3 text-white" />}
+                                  </button>
+
+                                  {/* Task info */}
+                                  <div className="min-w-0 flex-1">
+                                    <p className={cn('text-sm font-medium', task.status === 'done' ? 'text-slate-500 line-through' : 'text-white')}>
+                                      {task.title}
+                                    </p>
+                                    {task.description && (
+                                      <p className="text-xs text-slate-400 line-clamp-1 mt-0.5">{task.description}</p>
+                                    )}
+                                  </div>
+
+                                  {/* Assignee badge */}
+                                  {task.assignee && (
+                                    <Badge variant="outline" className={cn('text-[10px] h-5 gap-1', assigneeColors?.bg, assigneeColors?.text, assigneeColors?.border)}>
+                                      <span>{assigneeAvatar}</span>
+                                      {task.assignee.name}
+                                    </Badge>
+                                  )}
+
+                                  {/* Status badge */}
+                                  <Badge variant="outline" className={cn(
+                                    'text-[10px] h-5',
+                                    task.status === 'done' ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20' :
+                                    task.status === 'in_progress' ? 'text-amber-300 bg-amber-500/10 border-amber-500/20' :
+                                    'text-slate-400 bg-slate-500/10 border-slate-500/20'
+                                  )}>
+                                    {task.status === 'done' ? 'Done' : task.status === 'in_progress' ? 'In Progress' : 'To Do'}
+                                  </Badge>
+
+                                  {/* Expand icon */}
+                                  {isExpanded ? <ChevronDown className="size-3 text-slate-500" /> : <ChevronRight className="size-3 text-slate-500" />}
+                                </button>
+
+                                {/* Expanded content: instruction */}
+                                {isExpanded && instruction && (
+                                  <div className="px-3 pb-3 pt-0">
+                                    <div className={cn('rounded-lg p-3 border', assigneeColors?.bg, assigneeColors?.border)}>
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <span>{assigneeAvatar}</span>
+                                        <span className={cn('text-xs font-medium', assigneeColors?.text)}>
+                                          Instruction for {task.assignee?.name}
+                                        </span>
+                                      </div>
+                                      <p className="text-xs text-slate-300 leading-relaxed">{instruction.action}</p>
+                                      {instruction.metadata && (
+                                        <p className="text-[10px] text-slate-500 mt-2 italic">{instruction.metadata}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center py-8 gap-3">
+                          <ListChecks className="size-8 text-slate-600" />
+                          <p className="text-xs text-slate-400">No tasks yet. Use Orchestrate or AI Analyze to generate tasks.</p>
+                        </div>
+                      )}
+
+                      {/* Add task form */}
+                      <Separator className="bg-neutral-800" />
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="New task title..."
+                          value={newTaskTitle}
+                          onChange={(e) => setNewTaskTitle(e.target.value)}
+                          className="bg-neutral-900 border-neutral-700 text-white text-xs h-8"
+                          onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
+                        />
+                        <Button size="sm" onClick={handleAddTask} disabled={!newTaskTitle.trim()} className="bg-rose-600 hover:bg-rose-700 text-white h-8 text-xs shrink-0">
+                          <Plus className="size-3" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* ─── Discussion Tab ──────────────────────────────────────── */}
+                <TabsContent value="discussion">
+                  <Card className="bg-[#0d1117] border-neutral-800">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-sm text-white flex items-center gap-2">
+                            <MessageSquare className="size-4 text-rose-400" />
+                            Agent Discussion
+                          </CardTitle>
+                          <CardDescription className="text-xs text-slate-400">
+                            {selectedProject.discussions?.length || 0} messages between agents
+                          </CardDescription>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleGenerateDiscussion}
+                          disabled={generatingDiscussion}
+                          className="border-neutral-700 text-slate-300 h-7 text-xs gap-1"
+                        >
+                          {generatingDiscussion ? <Loader2 className="size-3 animate-spin" /> : <MessageSquare className="size-3" />}
+                          {generatingDiscussion ? 'Generating...' : 'Generate Discussion'}
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {selectedProject.discussions && selectedProject.discussions.length > 0 ? (
+                        <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                          {(() => {
+                            let lastRound = -1
+                            return selectedProject.discussions
+                              .sort((a, b) => a.round - b.round || new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                              .map((msg) => {
+                                const colors = getAgentColor(msg.agentType)
+                                const avatar = getAgentAvatar(msg.agentType)
+                                const showRoundHeader = msg.round !== lastRound
+                                lastRound = msg.round
+
+                                return (
+                                  <div key={msg.id}>
+                                    {showRoundHeader && msg.round > 0 && (
+                                      <div className="flex items-center gap-2 my-3">
+                                        <Separator className="flex-1 bg-neutral-800" />
+                                        <Badge variant="outline" className="text-[9px] h-4 text-slate-500 bg-neutral-900 border-neutral-700 shrink-0">
+                                          Round {msg.round}
+                                        </Badge>
+                                        <Separator className="flex-1 bg-neutral-800" />
+                                      </div>
+                                    )}
+
+                                    {/* Instruction message */}
+                                    {msg.type === 'instruction' ? (
+                                      <div className={cn('rounded-lg p-3 border-l-2', colors.bg, colors.border)}>
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <span className="text-sm">{avatar}</span>
+                                          <span className={cn('text-xs font-medium', colors.text)}>{msg.agentName}</span>
+                                          <Badge variant="outline" className="text-[9px] h-4 text-amber-300 bg-amber-500/10 border-amber-500/20">
+                                            Instruction
+                                          </Badge>
+                                        </div>
+                                        <p className="text-xs text-slate-300 leading-relaxed">{msg.content}</p>
+                                        <p className="text-[10px] text-slate-600 mt-1">{formatRelativeTime(msg.timestamp)}</p>
+                                      </div>
+                                    ) : msg.type === 'milestone' ? (
+                                      <div className="rounded-lg p-3 border border-emerald-500/20 bg-emerald-500/5">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <span className="text-sm">🏁</span>
+                                          <span className="text-xs font-medium text-emerald-400">Milestone</span>
+                                        </div>
+                                        <p className="text-xs text-slate-300 leading-relaxed">{msg.content}</p>
+                                      </div>
+                                    ) : msg.type === 'status' ? (
+                                      <div className="rounded-lg p-2 bg-neutral-900/30 border border-neutral-800">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-sm">{avatar}</span>
+                                          <span className={cn('text-xs', colors.text)}>{msg.agentName}</span>
+                                          <span className="text-xs text-slate-500">{msg.content}</span>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      /* Regular discussion message */
+                                      <div className="flex items-start gap-2">
+                                        <div className="w-7 h-7 rounded-full bg-neutral-800 flex items-center justify-center shrink-0 text-xs">
+                                          {avatar}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-2">
+                                            <span className={cn('text-xs font-medium', colors.text)}>{msg.agentName}</span>
+                                            <span className="text-[10px] text-slate-600">{formatRelativeTime(msg.timestamp)}</span>
+                                          </div>
+                                          <div className="mt-1 bg-neutral-900/50 rounded-lg p-2.5">
+                                            <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })
+                          })()}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center py-12 gap-4">
+                          <div className="w-16 h-16 rounded-full bg-rose-500/10 border-2 border-rose-500/20 flex items-center justify-center">
+                            <MessageSquare className="size-8 text-rose-400" />
+                          </div>
+                          <div className="text-center">
+                            <p className="text-sm font-medium text-white">No Discussions Yet</p>
+                            <p className="text-xs text-slate-400 mt-1">Generate a discussion between agents working on this project</p>
+                          </div>
+                          <Button
+                            onClick={handleGenerateDiscussion}
+                            disabled={generatingDiscussion}
+                            className="bg-rose-600 hover:bg-rose-700 text-white gap-2"
+                          >
+                            {generatingDiscussion ? <Loader2 className="size-4 animate-spin" /> : <MessageSquare className="size-4" />}
+                            {generatingDiscussion ? 'Generating...' : 'Generate Discussion'}
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* ─── Files Tab ───────────────────────────────────────────── */}
+                <TabsContent value="files">
+                  <Card className="bg-[#0d1117] border-neutral-800">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-sm text-white flex items-center gap-2">
+                            <File className="size-4 text-rose-400" />
+                            Project Files
+                          </CardTitle>
+                          <CardDescription className="text-xs text-slate-400">
+                            {projectFiles.length} uploaded + generated files
+                          </CardDescription>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploadingFiles} className="border-neutral-700 text-slate-300 h-7 text-xs gap-1">
+                          {uploadingFiles ? <Loader2 className="size-3 animate-spin" /> : <Upload className="size-3" />}
+                          Upload
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {/* Drag and drop area */}
+                      <div
+                        className="border-2 border-dashed border-neutral-700 rounded-lg p-6 text-center mb-4 hover:border-rose-500/30 transition-colors cursor-pointer"
+                        onClick={() => fileInputRef.current?.click()}
+                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
+                        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); if (e.dataTransfer.files) handleFileUpload(e.dataTransfer.files) }}
                       >
-                        {pushResult.repoUrl.replace('https://github.com/', '')}
-                        <ExternalLink className="size-2.5" />
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4 py-2">
-                  <div className="flex items-center gap-2 text-xs text-slate-400 bg-neutral-900 rounded-lg p-2 border border-neutral-800">
-                    <Github className="size-4 text-cyan-400" />
-                    Connected as <span className="text-white font-medium">{githubUsername}</span>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-slate-300">Repository Name</Label>
-                    <Input
-                      placeholder="my-project"
-                      value={pushRepoName}
-                      onChange={(e) => setPushRepoName(e.target.value)}
-                      className="bg-neutral-900 border-neutral-700 text-white"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-slate-300">Description</Label>
-                    <Textarea
-                      placeholder="Project description..."
-                      value={pushDescription}
-                      onChange={(e) => setPushDescription(e.target.value)}
-                      className="bg-neutral-900 border-neutral-700 text-white min-h-16"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label className="text-slate-300 text-xs">Repository Visibility</Label>
-                    <div className="flex items-center gap-2">
-                      <button
-                        className={`px-3 py-1 rounded-md text-xs transition-colors ${!pushPrivate ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-white border border-neutral-700'}`}
-                        onClick={() => setPushPrivate(false)}
-                      >
-                        Public
-                      </button>
-                      <button
-                        className={`px-3 py-1 rounded-md text-xs transition-colors ${pushPrivate ? 'bg-amber-600/20 text-amber-400 border border-amber-500/30' : 'text-slate-400 hover:text-white border border-neutral-700'}`}
-                        onClick={() => setPushPrivate(true)}
-                      >
-                        Private
-                      </button>
-                    </div>
-                  </div>
-                  {pushError && (
-                    <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/5 rounded-lg p-2 border border-red-500/20">
-                      <AlertCircle className="size-3 shrink-0" />
-                      {pushError}
-                    </div>
-                  )}
-                </div>
-              )}
-              <DialogFooter>
-                {pushResult ? (
-                  <div className="flex gap-2 w-full">
-                    <Button variant="outline" onClick={() => setGithubPushDialogOpen(false)} className="border-neutral-700 text-slate-300 flex-1">Close</Button>
-                    <a
-                      href={pushResult.repoUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white h-9 px-4 text-sm font-medium transition-colors"
-                    >
-                      <Globe className="size-3.5" />
-                      Open on GitHub
-                    </a>
-                  </div>
-                ) : (
-                  <>
-                    <Button variant="outline" onClick={() => setGithubPushDialogOpen(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
-                    <Button
-                      onClick={handleGithubPush}
-                      disabled={pushing || !pushRepoName.trim()}
-                      className="bg-rose-600 hover:bg-rose-700 text-white"
-                    >
-                      {pushing ? 'Pushing...' : 'Push to GitHub'}
-                    </Button>
-                  </>
-                )}
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                        <Upload className="size-6 text-slate-500 mx-auto mb-2" />
+                        <p className="text-xs text-slate-400">Drag & drop files here, or click to upload</p>
+                      </div>
 
-          {/* Add Skill Dialog */}
-          <Dialog open={addSkillDialogOpen} onOpenChange={setAddSkillDialogOpen}>
-            <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-md">
-              <DialogHeader>
-                <DialogTitle className="text-rose-400">Add Skill</DialogTitle>
-                <DialogDescription className="text-slate-400">Assign a skill to this project</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-2">
-                <div className="space-y-2">
-                  <Label className="text-slate-300">Skill</Label>
-                  <Select value={selectedSkillId} onValueChange={setSelectedSkillId}>
-                    <SelectTrigger className="bg-neutral-900 border-neutral-700 text-white">
-                      <SelectValue placeholder="Select a skill..." />
-                    </SelectTrigger>
-                    <SelectContent className="bg-neutral-900 border-neutral-700">
-                      {installedSkills
-                        .filter((s) => !(selectedProject.skills || []).some((ps) => ps.skillId === s.id))
-                        .map((skill) => (
-                          <SelectItem key={skill.id} value={skill.id} className="text-white focus:bg-neutral-800 focus:text-white">
-                            {skill.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-slate-300">Role (optional)</Label>
-                  <Input
-                    placeholder="e.g. primary, fallback..."
-                    value={newSkillRole}
-                    onChange={(e) => setNewSkillRole(e.target.value)}
-                    className="bg-neutral-900 border-neutral-700 text-white"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setAddSkillDialogOpen(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
-                <Button onClick={handleAddSkill} disabled={!selectedSkillId} className="bg-rose-600 hover:bg-rose-700 text-white">Add Skill</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                      {/* Documentation section */}
+                      {projectFiles.filter(f => f.source === 'orchestrator').length > 0 && (
+                        <div className="mb-4">
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">Auto-Generated Documentation</p>
+                          <div className="space-y-1">
+                            {projectFiles.filter(f => f.source === 'orchestrator').map((file) => (
+                              <div key={file.id} className="flex items-center gap-2 py-1.5 px-2 rounded text-xs hover:bg-neutral-800/60 transition-colors group">
+                                {getFileIcon(file.filename)}
+                                <span className="text-slate-300 group-hover:text-white truncate flex-1">{file.path}</span>
+                                <Badge variant="outline" className="text-[9px] h-4 text-pink-300 bg-pink-500/10 border-pink-500/20 shrink-0">Docs</Badge>
+                                <span className="text-[10px] text-slate-600 shrink-0">{formatFileSize(file.size)}</span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-5 w-5 p-0 text-slate-500 hover:text-white shrink-0"
+                                  onClick={(e) => { e.stopPropagation(); handleDownloadFile(file.id, file.filename) }}
+                                >
+                                  <Download className="size-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
-          {/* Add MCP Server Dialog */}
-          <Dialog open={addMcpDialogOpen} onOpenChange={setAddMcpDialogOpen}>
-            <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-md">
-              <DialogHeader>
-                <DialogTitle className="text-rose-400">Add MCP Server</DialogTitle>
-                <DialogDescription className="text-slate-400">Connect an MCP server to this project</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-2">
-                <div className="space-y-2">
-                  <Label className="text-slate-300">MCP Server</Label>
-                  <Select value={selectedMcpId} onValueChange={setSelectedMcpId}>
-                    <SelectTrigger className="bg-neutral-900 border-neutral-700 text-white">
-                      <SelectValue placeholder="Select an MCP server..." />
-                    </SelectTrigger>
-                    <SelectContent className="bg-neutral-900 border-neutral-700">
-                      {installedMcpServers
-                        .filter((m) => !(selectedProject.mcpServers || []).some((pm) => pm.mcpServerId === m.id))
-                        .map((mcp) => (
-                          <SelectItem key={mcp.id} value={mcp.id} className="text-white focus:bg-neutral-800 focus:text-white">
-                            {mcp.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-slate-300">Role (optional)</Label>
-                  <Input
-                    placeholder="e.g. primary, backup..."
-                    value={newMcpRole}
-                    onChange={(e) => setNewMcpRole(e.target.value)}
-                    className="bg-neutral-900 border-neutral-700 text-white"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setAddMcpDialogOpen(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
-                <Button onClick={handleAddMcp} disabled={!selectedMcpId} className="bg-rose-600 hover:bg-rose-700 text-white">Add Server</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
-      )}
+                      {/* Uploaded files */}
+                      {projectFiles.filter(f => f.source === 'upload').length > 0 && (
+                        <div className="mb-4">
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">Uploaded Files</p>
+                          <div className="space-y-1">
+                            {projectFiles.filter(f => f.source === 'upload').map((file) => (
+                              <div key={file.id} className="flex items-center gap-2 py-1.5 px-2 rounded text-xs hover:bg-neutral-800/60 transition-colors group">
+                                {getFileIcon(file.filename)}
+                                <span className="text-slate-300 group-hover:text-white truncate flex-1">{file.path}</span>
+                                <Badge variant="outline" className="text-[9px] h-4 text-cyan-300 bg-cyan-500/10 border-cyan-500/20 shrink-0">Upload</Badge>
+                                <span className="text-[10px] text-slate-600 shrink-0">{formatFileSize(file.size)}</span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-5 w-5 p-0 text-slate-500 hover:text-white shrink-0"
+                                  onClick={(e) => { e.stopPropagation(); handleDownloadFile(file.id, file.filename) }}
+                                >
+                                  <Download className="size-3" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-5 w-5 p-0 text-slate-500 hover:text-red-400 shrink-0"
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteFile(file.id) }}
+                                >
+                                  <Trash2 className="size-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Generated file tree */}
+                      <div>
+                        <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-2">Generated Project Structure</p>
+                        <div className="bg-neutral-900/30 rounded-lg p-2">
+                          {renderFileTree(generateFileTree(selectedProject))}
+                        </div>
+                      </div>
+
+                      {projectFiles.length === 0 && (
+                        <div className="flex flex-col items-center py-8 gap-3">
+                          <File className="size-8 text-slate-600" />
+                          <p className="text-xs text-slate-400">No files uploaded yet. Orchestrate a project to generate documentation.</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* ─── Export Tab ──────────────────────────────────────────── */}
+                <TabsContent value="export">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* GitHub Push */}
+                    <Card className="bg-[#0d1117] border-neutral-800">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm text-white flex items-center gap-2">
+                          <Github className="size-4 text-rose-400" />
+                          Push to GitHub
+                        </CardTitle>
+                        <CardDescription className="text-xs text-slate-400">
+                          {githubConnected ? `Connected as ${githubUsername}` : 'Connect your GitHub account to push'}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {githubConnected ? (
+                          <>
+                            {selectedProject.githubStatus === 'pushed' && selectedProject.githubRepoUrl ? (
+                              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+                                <p className="text-xs text-emerald-400 font-medium flex items-center gap-1">
+                                  <CheckCircle2 className="size-3" />
+                                  Already pushed to GitHub
+                                </p>
+                                <a
+                                  href={selectedProject.githubRepoUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-slate-300 hover:text-white flex items-center gap-1 mt-1"
+                                >
+                                  {selectedProject.githubRepoUrl}
+                                  <ExternalLink className="size-3" />
+                                </a>
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                <div className="space-y-2">
+                                  <Label className="text-slate-300 text-xs">Repository Name</Label>
+                                  <Input
+                                    value={pushRepoName}
+                                    onChange={(e) => setPushRepoName(e.target.value)}
+                                    placeholder={selectedProject.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}
+                                    className="bg-neutral-900 border-neutral-700 text-white text-xs h-8"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label className="text-slate-300 text-xs">Description</Label>
+                                  <Input
+                                    value={pushDescription}
+                                    onChange={(e) => setPushDescription(e.target.value)}
+                                    placeholder={selectedProject.description || ''}
+                                    className="bg-neutral-900 border-neutral-700 text-white text-xs h-8"
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Switch checked={pushPrivate} onCheckedChange={setPushPrivate} />
+                                  <Label className="text-slate-300 text-xs">Private repository</Label>
+                                </div>
+                                <Button
+                                  onClick={handleGithubPush}
+                                  disabled={pushing}
+                                  className="w-full bg-neutral-800 hover:bg-neutral-700 text-white gap-2 h-8 text-xs"
+                                >
+                                  {pushing ? <Loader2 className="size-3 animate-spin" /> : <Github className="size-3" />}
+                                  {pushing ? 'Pushing...' : 'Push to GitHub'}
+                                </Button>
+                              </div>
+                            )}
+                            {pushError && (
+                              <p className="text-xs text-red-400 flex items-center gap-1">
+                                <AlertCircle className="size-3" />
+                                {pushError}
+                              </p>
+                            )}
+                            {pushResult && (
+                              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+                                <p className="text-xs text-emerald-400 font-medium">Push successful!</p>
+                                <p className="text-[10px] text-slate-400">{pushResult.filesPushed} files pushed</p>
+                                <a
+                                  href={pushResult.repoUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 mt-1"
+                                >
+                                  View on GitHub <ExternalLink className="size-3" />
+                                </a>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="bg-neutral-900/50 rounded-lg p-3 text-center">
+                              <Github className="size-8 text-slate-600 mx-auto mb-2" />
+                              <p className="text-xs text-slate-400">Connect your GitHub account to push this project</p>
+                            </div>
+                            <Button
+                              onClick={() => setGithubSetupDialogOpen(true)}
+                              className="w-full bg-neutral-800 hover:bg-neutral-700 text-white gap-2 h-8 text-xs"
+                            >
+                              <Github className="size-3" />
+                              Connect GitHub
+                            </Button>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* ZIP Download */}
+                    <Card className="bg-[#0d1117] border-neutral-800">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm text-white flex items-center gap-2">
+                          <Download className="size-4 text-rose-400" />
+                          Download ZIP
+                        </CardTitle>
+                        <CardDescription className="text-xs text-slate-400">
+                          Download all project files as a ZIP archive
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {/* Project summary */}
+                        <div className="bg-neutral-900/50 rounded-lg p-3 space-y-2">
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Project Summary</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                              <ListChecks className="size-3" />
+                              <span>{selectedProject.tasks?.length || 0} tasks</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                              <File className="size-3" />
+                              <span>{projectFiles.length} files</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                              <Users className="size-3" />
+                              <span>{new Set(selectedProject.tasks?.filter(t => t.assignedTo).map(t => t.assignedTo)).size} agents</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                              <CheckCircle2 className="size-3" />
+                              <span>{selectedProject.tasks?.filter(t => t.status === 'done').length || 0} completed</span>
+                            </div>
+                          </div>
+                          <div className="space-y-1 mt-2">
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className="text-slate-400">Completion</span>
+                              <span className="text-rose-400 font-medium">{calculateProgress(selectedProject.tasks)}%</span>
+                            </div>
+                            <Progress value={calculateProgress(selectedProject.tasks)} className="h-1.5 bg-neutral-800 [&>div]:bg-gradient-to-r [&>div]:from-rose-500 [&>div]:to-pink-500" />
+                          </div>
+                        </div>
+
+                        <Button
+                          onClick={handleDownloadZip}
+                          disabled={downloading}
+                          className="w-full bg-rose-600 hover:bg-rose-700 text-white gap-2 h-9"
+                        >
+                          {downloading ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+                          {downloading ? 'Generating ZIP...' : 'Download Project ZIP'}
+                        </Button>
+                      </CardContent>
+                    </Card>
+
+                    {/* Skills & MCP */}
+                    <Card className="bg-[#0d1117] border-neutral-800">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-sm text-white flex items-center gap-2">
+                            <Sparkles className="size-4 text-rose-400" />
+                            Skills
+                          </CardTitle>
+                          <Button size="sm" variant="outline" onClick={() => setAddSkillDialogOpen(true)} className="border-neutral-700 text-slate-300 h-6 text-[10px] gap-1">
+                            <Plus className="size-2.5" />
+                            Add
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {selectedProject.skills && selectedProject.skills.length > 0 ? (
+                          <div className="space-y-1.5">
+                            {selectedProject.skills.map((ps) => (
+                              <div key={ps.id} className="flex items-center justify-between text-xs bg-neutral-900/50 rounded p-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Wrench className="size-3 text-cyan-400 shrink-0" />
+                                  <span className="text-white truncate">{ps.skill?.name || 'Unknown'}</span>
+                                  {ps.role && <Badge variant="outline" className="text-[9px] h-4 text-slate-400 bg-neutral-800 border-neutral-700">{ps.role}</Badge>}
+                                </div>
+                                <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-slate-500 hover:text-red-400" onClick={() => handleRemoveSkill(ps.skillId)}>
+                                  <Trash2 className="size-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-400 text-center py-4">No skills assigned</p>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-[#0d1117] border-neutral-800">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-sm text-white flex items-center gap-2">
+                            <Server className="size-4 text-rose-400" />
+                            MCP Servers
+                          </CardTitle>
+                          <Button size="sm" variant="outline" onClick={() => setAddMcpDialogOpen(true)} className="border-neutral-700 text-slate-300 h-6 text-[10px] gap-1">
+                            <Plus className="size-2.5" />
+                            Add
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {selectedProject.mcpServers && selectedProject.mcpServers.length > 0 ? (
+                          <div className="space-y-1.5">
+                            {selectedProject.mcpServers.map((pm) => (
+                              <div key={pm.id} className="flex items-center justify-between text-xs bg-neutral-900/50 rounded p-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Server className="size-3 text-violet-400 shrink-0" />
+                                  <span className="text-white truncate">{pm.mcpServer?.name || 'Unknown'}</span>
+                                  {pm.role && <Badge variant="outline" className="text-[9px] h-4 text-slate-400 bg-neutral-800 border-neutral-700">{pm.role}</Badge>}
+                                </div>
+                                <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-slate-500 hover:text-red-400" onClick={() => handleRemoveMcp(pm.mcpServerId)}>
+                                  <Trash2 className="size-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-400 text-center py-4">No MCP servers assigned</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </>
+          )}
         </div>
       </ScrollArea>
+
+      {/* ─── Status Change Dialog ──────────────────────────────────────────────── */}
+      <StatusChangeDialog
+        open={statusChangeDialogOpen}
+        onOpenChange={setStatusChangeDialogOpen}
+        newStatus={pendingStatus}
+        onConfirm={() => pendingStatus && applyStatusChange(pendingStatus)}
+      />
+
+      {/* ─── Add Skill Dialog ──────────────────────────────────────────────────── */}
+      <Dialog open={addSkillDialogOpen} onOpenChange={setAddSkillDialogOpen}>
+        <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-rose-400 text-sm">Add Skill to Project</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Select value={selectedSkillId} onValueChange={setSelectedSkillId}>
+              <SelectTrigger className="bg-neutral-900 border-neutral-700 text-white">
+                <SelectValue placeholder="Select a skill..." />
+              </SelectTrigger>
+              <SelectContent className="bg-neutral-900 border-neutral-700">
+                {installedSkills.map((s) => (
+                  <SelectItem key={s.id} value={s.id} className="text-white focus:bg-neutral-800 focus:text-white">
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              placeholder="Role (optional)"
+              value={newSkillRole}
+              onChange={(e) => setNewSkillRole(e.target.value)}
+              className="bg-neutral-900 border-neutral-700 text-white"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddSkillDialogOpen(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
+            <Button onClick={handleAddSkill} disabled={!selectedSkillId} className="bg-rose-600 hover:bg-rose-700 text-white">Add</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Add MCP Dialog ──────────────────────────────────────────────────── */}
+      <Dialog open={addMcpDialogOpen} onOpenChange={setAddMcpDialogOpen}>
+        <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-rose-400 text-sm">Add MCP Server to Project</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Select value={selectedMcpId} onValueChange={setSelectedMcpId}>
+              <SelectTrigger className="bg-neutral-900 border-neutral-700 text-white">
+                <SelectValue placeholder="Select an MCP server..." />
+              </SelectTrigger>
+              <SelectContent className="bg-neutral-900 border-neutral-700">
+                {installedMcpServers.map((m) => (
+                  <SelectItem key={m.id} value={m.id} className="text-white focus:bg-neutral-800 focus:text-white">
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              placeholder="Role (optional)"
+              value={newMcpRole}
+              onChange={(e) => setNewMcpRole(e.target.value)}
+              className="bg-neutral-900 border-neutral-700 text-white"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddMcpDialogOpen(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
+            <Button onClick={handleAddMcp} disabled={!selectedMcpId} className="bg-rose-600 hover:bg-rose-700 text-white">Add</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── GitHub Setup Dialog ──────────────────────────────────────────────── */}
+      <Dialog open={githubSetupDialogOpen} onOpenChange={setGithubSetupDialogOpen}>
+        <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-rose-400 flex items-center gap-2">
+              <Github className="size-5" />
+              Connect GitHub
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Enter your GitHub Personal Access Token to push projects
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label className="text-slate-300">Username</Label>
+              <Input
+                placeholder="github-username"
+                value={githubSetupUsername}
+                onChange={(e) => setGithubSetupUsername(e.target.value)}
+                className="bg-neutral-900 border-neutral-700 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300">Personal Access Token</Label>
+              <Input
+                type="password"
+                placeholder="ghp_xxxxxxxxxxxx"
+                value={githubToken}
+                onChange={(e) => setGithubToken(e.target.value)}
+                className="bg-neutral-900 border-neutral-700 text-white"
+              />
+            </div>
+            {githubSetupError && (
+              <p className="text-xs text-red-400 flex items-center gap-1">
+                <AlertCircle className="size-3" />
+                {githubSetupError}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGithubSetupDialogOpen(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
+            <Button onClick={handleGithubSetup} disabled={githubSettingUp || !githubToken.trim() || !githubSetupUsername.trim()} className="bg-rose-600 hover:bg-rose-700 text-white">
+              {githubSettingUp ? 'Connecting...' : 'Connect'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── GitHub Push Dialog ──────────────────────────────────────────────── */}
+      <Dialog open={githubPushDialogOpen} onOpenChange={setGithubPushDialogOpen}>
+        <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-rose-400 flex items-center gap-2">
+              <Github className="size-5" />
+              Push to GitHub
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Push project files to a GitHub repository
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label className="text-slate-300">Repository Name</Label>
+              <Input
+                value={pushRepoName}
+                onChange={(e) => setPushRepoName(e.target.value)}
+                className="bg-neutral-900 border-neutral-700 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300">Description</Label>
+              <Input
+                value={pushDescription}
+                onChange={(e) => setPushDescription(e.target.value)}
+                className="bg-neutral-900 border-neutral-700 text-white"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={pushPrivate} onCheckedChange={setPushPrivate} />
+              <Label className="text-slate-300">Private repository</Label>
+            </div>
+            {pushError && (
+              <p className="text-xs text-red-400 flex items-center gap-1">
+                <AlertCircle className="size-3" />
+                {pushError}
+              </p>
+            )}
+            {pushResult && (
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+                <p className="text-xs text-emerald-400 font-medium">Push successful!</p>
+                <p className="text-[10px] text-slate-400">{pushResult.filesPushed} files pushed</p>
+                <a href={pushResult.repoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 mt-1">
+                  View on GitHub <ExternalLink className="size-3" />
+                </a>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGithubPushDialogOpen(false)} className="border-neutral-700 text-slate-300">Cancel</Button>
+            <Button onClick={handleGithubPush} disabled={pushing} className="bg-rose-600 hover:bg-rose-700 text-white">
+              {pushing ? 'Pushing...' : 'Push'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -134,6 +134,7 @@ model Agent {
   messages      Message[]      // Messages authored by this agent
   tasksAssigned Task[]         @relation("TaskAssignee") // Tasks assigned to this agent
   activities    AgentActivity[] // Activities performed by this agent
+  discussions   AgentDiscussion[] // Discussions by this agent
 }
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
@@ -408,11 +409,18 @@ model Project {
   githubStatus     String?   @default("none") // "none" | "linked" | "pushed" | "error"
   githubPushedAt   DateTime? // When the project was pushed to GitHub
 
+  // Orchestrator
+  orchestratorStatus     String?    @default("pending") // "pending" | "analyzing" | "assigning" | "discussing" | "working" | "completed" | "failed"
+  orchestratorStartedAt  DateTime?
+  orchestratorCompletedAt DateTime?
+
   // Relations
   tasks         Task[]
   projectSkills ProjectSkill[]
   projectMCPServers ProjectMCPServer[]
   activities    AgentActivity[]
+  files         ProjectFile[]
+  discussions   AgentDiscussion[]
 
   @@index([userId])
   @@index([status])
@@ -457,6 +465,47 @@ model AgentActivity {
   action      String   // Description of what happened
   type        String   @default("status") // "status" | "task" | "discussion" | "milestone" | "error"
   status      String   @default("active") // "active" | "idle" | "busy" | "error" | "completed"
+  metadata    String?  // JSON string for additional data
+  createdAt   DateTime @default(now())
+
+  @@index([projectId])
+  @@index([agentId])
+  @@index([createdAt])
+}
+
+// ─── Project Files ────────────────────────────────────────────────────────────
+
+model ProjectFile {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  filename    String   // Original filename
+  path        String   // Virtual path within the project (e.g., "src/components/App.tsx")
+  content     String   // File content (base64 encoded for binary, plain text for text files)
+  mimeType    String?  // MIME type
+  size        Int      // File size in bytes
+  encoding    String   @default("utf-8") // "utf-8" | "base64"
+  source      String   @default("upload") // "upload" | "generated" | "orchestrator"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([path])
+}
+
+// ─── Agent Discussions ──────────────────────────────────────────────────────
+
+model AgentDiscussion {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  agentId     String?
+  agent       Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  agentName   String   // Agent display name
+  agentType   String   // Agent type
+  content     String   // Discussion message content
+  round       Int      @default(1) // Discussion round number
+  type        String   @default("discussion") // "discussion" | "instruction" | "status" | "milestone"
   metadata    String?  // JSON string for additional data
   createdAt   DateTime @default(now())
 
