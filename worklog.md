@@ -93,3 +93,32 @@ Stage Summary:
 - Agents generate real AI code using chatCompletion(), not template stubs
 - Orchestrator documentation appears as files in Code tab (README.md, docs/ARCHITECTURE.md)
 - All lint checks pass
+
+---
+Task ID: 5
+Agent: Main Orchestrator
+Task: Fix all module chunk loading errors and Code tab empty folder issue
+
+Work Log:
+- Investigated root cause of "Module Error: Failed to load chunk" affecting ALL modules
+- Found that archiver import `import archiver from 'archiver'` was causing build error in Next.js 16.1.3 Turbopack ("Export default doesn't exist in target module")
+- Turbopack's ESM static analysis can't find archiver's named exports (ZipArchive, TarArchive, etc.) even though they exist at runtime
+- Fixed archiver import using `createRequire` from 'module' to bypass Turbopack ESM analysis: `const require = createRequire(import.meta.url); const { ZipArchive } = require('archiver')`
+- Verified `createRequire` + `require('archiver')` works correctly in ESM context at runtime
+- Fixed TaskData status type mismatch: frontend used 'todo'/'done' but backend uses 'pending'/'completed'
+  - Updated TaskData interface: status: 'pending' | 'in_progress' | 'completed'
+  - Updated calculateProgress to check t.status === 'completed'
+  - Updated all task status display logic (badges, progress bars, toggle handlers)
+- Added controlled tab state (activeDetailTab) to ProjectsModule for better tab management
+- Added useEffect to re-fetch files when switching to Code tab
+- Improved fetchProjectFiles error handling with console.error logging
+- Reset tab to 'overview' when selecting a new project
+- Cleared .next cache and verified build compiles cleanly
+- Verified lint passes with no errors
+
+Stage Summary:
+- Chunk loading errors fixed: archiver import now uses createRequire to bypass Turbopack ESM analysis
+- Task status types aligned with backend (pending/completed instead of todo/done)
+- Code tab now properly refreshes when switching to it
+- Better error handling in file fetching
+- All modules should load correctly with no chunk errors

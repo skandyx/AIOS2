@@ -108,7 +108,7 @@ interface TaskData {
   id: string
   title: string
   description?: string
-  status: 'todo' | 'in_progress' | 'done'
+  status: 'pending' | 'in_progress' | 'completed'
   assignedTo?: string
   createdAt: string
 }
@@ -320,7 +320,7 @@ function formatRelativeTime(dateStr: string): string {
 
 function calculateProgress(tasks: TaskData[] | undefined): number {
   if (!tasks || tasks.length === 0) return 0
-  const done = tasks.filter(t => t.status === 'done').length
+  const done = tasks.filter(t => t.status === 'completed').length
   return Math.round((done / tasks.length) * 100)
 }
 
@@ -1003,6 +1003,7 @@ export default function ProjectsModule() {
   const [aiAnalyzing, setAiAnalyzing] = useState(false)
   const [aiTasksGenerated, setAiTasksGenerated] = useState(0)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [activeDetailTab, setActiveDetailTab] = useState('overview')
 
   // Enhanced feature states
   const [orchestratorLoading, setOrchestratorLoading] = useState(false)
@@ -1096,10 +1097,18 @@ export default function ProjectsModule() {
   useEffect(() => { fetchProjects() }, [fetchProjects])
   useEffect(() => { fetchInstalledSkills(); fetchInstalledMcp() }, [fetchInstalledSkills, fetchInstalledMcp])
 
+  // Re-fetch files when switching to the Code tab
+  useEffect(() => {
+    if (activeDetailTab === 'files' && selectedProject) {
+      fetchProjectFiles(selectedProject.id)
+    }
+  }, [activeDetailTab])
+
   const handleSelectProject = async (project: ProjectData) => {
     setSelectedProject(project)
     setView('detail')
     setOrchestratorResult(null)
+    setActiveDetailTab('overview')
     try {
       const res = await fetch(`/api/projects/${project.id}`)
       if (res.ok) { const detail = await res.json(); setSelectedProject(detail) }
@@ -1126,8 +1135,16 @@ export default function ProjectsModule() {
         // API returns { files: [...] } but also handle bare array for robustness
         const files = Array.isArray(data) ? data : (data.files || [])
         setProjectFiles(files)
+      } else {
+        console.error('Failed to fetch project files:', res.status, res.statusText)
+        setProjectFiles([])
       }
-    } catch { /* */ } finally { setFilesLoading(false) }
+    } catch (err) {
+      console.error('Error fetching project files:', err)
+      setProjectFiles([])
+    } finally {
+      setFilesLoading(false)
+    }
   }
 
   const fetchGithubInfo = async (projectId: string) => {
@@ -1298,8 +1315,8 @@ export default function ProjectsModule() {
     if (!selectedProject) return
     const task = (selectedProject.tasks || []).find(t => t.id === taskId)
     if (!task) return
-    const newStatus: 'todo' | 'in_progress' | 'done' = task.status === 'done' ? 'todo' : 'done'
-    const tasks = (selectedProject.tasks || []).map((t) => t.id === taskId ? { ...t, status: newStatus as 'todo' | 'in_progress' | 'done' } : t)
+    const newStatus: 'pending' | 'in_progress' | 'completed' = task.status === 'completed' ? 'pending' : 'completed'
+    const tasks = (selectedProject.tasks || []).map((t) => t.id === taskId ? { ...t, status: newStatus as 'pending' | 'in_progress' | 'completed' } : t)
     const updated = { ...selectedProject, tasks }
     setSelectedProject(updated); setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
     try { await fetch(`/api/projects/${selectedProject.id}/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) }) } catch { /* */ }
@@ -1379,7 +1396,7 @@ export default function ProjectsModule() {
     }
     if (selectedProject.tasks && selectedProject.tasks.length > 0) {
       events.push({ id: 'tasks-created', timestamp: selectedProject.tasks[0].createdAt, title: 'Tasks Created', description: `${selectedProject.tasks.length} tasks defined`, icon: <ListChecks className="size-4" />, color: 'text-cyan-400' })
-      const doneTasks = selectedProject.tasks.filter(t => t.status === 'done')
+      const doneTasks = selectedProject.tasks.filter(t => t.status === 'completed')
       if (doneTasks.length > 0) {
         events.push({ id: 'tasks-completed', timestamp: doneTasks[doneTasks.length - 1].createdAt, title: 'Tasks Completed', description: `${doneTasks.length}/${selectedProject.tasks.length} tasks done`, icon: <CheckCircle2 className="size-4" />, color: 'text-emerald-400' })
       }
@@ -1620,7 +1637,7 @@ export default function ProjectsModule() {
                 </Button>
               </div>
 
-              <Tabs defaultValue="overview" className="space-y-4">
+              <Tabs value={activeDetailTab} onValueChange={setActiveDetailTab} className="space-y-4">
                 <ScrollArea className="w-full">
                   <TabsList className="bg-neutral-900 border border-neutral-800 flex-wrap h-auto gap-1 p-1">
                     <TabsTrigger value="overview" className="data-[state=active]:bg-rose-600/20 data-[state=active]:text-rose-400 gap-1.5 text-xs px-3">
@@ -1711,7 +1728,7 @@ export default function ProjectsModule() {
                       <CardContent className="px-4 pb-4 space-y-3">
                         <div className="flex items-center justify-between text-sm">
                           <span className="text-slate-400">
-                            {selectedProject.tasks ? `${selectedProject.tasks.filter(t => t.status === 'done').length} / ${selectedProject.tasks.length} tasks complete` : 'No tasks yet'}
+                            {selectedProject.tasks ? `${selectedProject.tasks.filter(t => t.status === 'completed').length} / ${selectedProject.tasks.length} tasks complete` : 'No tasks yet'}
                           </span>
                           <span className="text-rose-400 font-bold text-lg">{calculateProgress(selectedProject.tasks)}%</span>
                         </div>
@@ -1724,11 +1741,11 @@ export default function ProjectsModule() {
                               <div
                                 key={task.id}
                                 className={`flex-1 transition-colors duration-500 ${
-                                  task.status === 'done' ? 'bg-emerald-500' :
+                                  task.status === 'completed' ? 'bg-emerald-500' :
                                   task.status === 'in_progress' ? 'bg-amber-500 animate-pulse' :
                                   'bg-neutral-700'
                                 }`}
-                                title={`${task.title}: ${task.status === 'done' ? 'Done' : task.status === 'in_progress' ? 'In Progress' : 'Pending'}`}
+                                title={`${task.title}: ${task.status === 'completed' ? 'Done' : task.status === 'in_progress' ? 'In Progress' : 'Pending'}`}
                               />
                             ))}
                           </div>
@@ -1864,7 +1881,7 @@ export default function ProjectsModule() {
                                   : 'border-neutral-800 bg-neutral-900/50 hover:border-neutral-700'
                               }`}>
                                 <div className="shrink-0">
-                                  {task.status === 'done' ? (
+                                  {task.status === 'completed' ? (
                                     <div className="size-5 rounded bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
                                       <CheckCircle2 className="size-3 text-emerald-400" />
                                     </div>
@@ -1877,17 +1894,17 @@ export default function ProjectsModule() {
                                   )}
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                  <p className={`text-sm ${task.status === 'done' ? 'text-slate-500 line-through' : task.status === 'in_progress' ? 'text-amber-300' : 'text-white'}`}>
+                                  <p className={`text-sm ${task.status === 'completed' ? 'text-slate-500 line-through' : task.status === 'in_progress' ? 'text-amber-300' : 'text-white'}`}>
                                     {task.title}
                                   </p>
                                   {task.description && <p className="text-xs text-slate-500 mt-0.5 truncate">{task.description}</p>}
                                 </div>
                                 <Badge variant="outline" className={`text-[9px] h-4 px-1.5 shrink-0 ${
-                                  task.status === 'done' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' :
+                                  task.status === 'completed' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' :
                                   task.status === 'in_progress' ? 'text-amber-400 bg-amber-500/10 border-amber-500/20 animate-pulse' :
                                   'text-slate-400 bg-slate-500/10 border-slate-500/20'
                                 }`}>
-                                  {task.status === 'done' ? 'Done' : task.status === 'in_progress' ? 'Working...' : 'Pending'}
+                                  {task.status === 'completed' ? 'Done' : task.status === 'in_progress' ? 'Working...' : 'Pending'}
                                 </Badge>
                               </div>
                             ))}

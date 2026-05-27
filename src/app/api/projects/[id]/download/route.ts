@@ -1,7 +1,11 @@
+import { createRequire } from 'module'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-// @ts-expect-error - ZipArchive is a runtime export of archiver not reflected in types
-import { ZipArchive } from 'archiver'
+
+// Use createRequire to bypass Turbopack ESM static analysis
+// archiver is a CJS module and its named exports (ZipArchive, etc.) aren't detected by Turbopack
+const require = createRequire(import.meta.url)
+const { ZipArchive } = require('archiver')
 
 // GET /api/projects/[id]/download - Download project as ZIP
 export async function GET(
