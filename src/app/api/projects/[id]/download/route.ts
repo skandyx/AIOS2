@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { ZipArchive } from 'archiver'
+import archiver from 'archiver'
 
 // GET /api/projects/[id]/download - Download project as ZIP
 export async function GET(
@@ -24,7 +24,7 @@ export async function GET(
     }
 
     // Create a ZIP archive using archiver
-    const archive = new ZipArchive({ zlib: { level: 9 } })
+    const archive = archiver('zip', { zlib: { level: 9 } })
 
     // Collect archive data in a buffer
     const chunks: Uint8Array[] = []
@@ -60,7 +60,7 @@ export async function GET(
     const zipBuffer = await archiveFinished
 
     // Return the ZIP as a downloadable response
-    return new NextResponse(zipBuffer, {
+    return new NextResponse(Buffer.from(zipBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',

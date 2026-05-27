@@ -46,3 +46,26 @@ Stage Summary:
 - Action bar added before tabs with Download ZIP, Push to GitHub, Generate Docs buttons
 - API route updated to support localPath on project creation
 - No lint errors, dev server running cleanly
+
+---
+Task ID: 3
+Agent: Main Orchestrator
+Task: Fix "Module Error" - Failed to load chunk for all modules
+
+Work Log:
+- Investigated "Module Error: Failed to load chunk /_next/static/chunks/src_components_497f4dcd._.js" error affecting ALL menu items
+- Found root cause: stale .next cache from previous compilation that had errors (broken archiver import, etc.)
+- Fixed archiver import in /api/projects/[id]/download/route.ts: changed `import { ZipArchive } from 'archiver'` to `import archiver from 'archiver'` and `new ZipArchive(...)` to `archiver('zip', ...)`
+- Fixed Uint8Array type error: wrapped zipBuffer in `Buffer.from()` for NextResponse compatibility
+- Fixed ProjectsModule.tsx task status type: added explicit type annotation `'todo' | 'in_progress' | 'done'` for toggle task status
+- Cleared .next cache directory to remove stale chunks
+- Restarted dev server with fresh compilation
+- Verified all API endpoints returning 200 (/api/mcp, /api/mcp/search, /api/projects)
+- Verified lint passes cleanly
+- Verified home page compiles and renders successfully
+
+Stage Summary:
+- Root cause was stale .next cache causing chunk loading failures across all modules
+- archiver API corrected to use `archiver('zip', ...)` instead of `new ZipArchive()`
+- TypeScript type fixes for task status in ProjectsModule
+- All modules should now load correctly with fresh cache

@@ -1293,8 +1293,8 @@ export default function ProjectsModule() {
     if (!selectedProject) return
     const task = (selectedProject.tasks || []).find(t => t.id === taskId)
     if (!task) return
-    const newStatus = task.status === 'done' ? 'todo' : 'done'
-    const tasks = (selectedProject.tasks || []).map((t) => t.id === taskId ? { ...t, status: newStatus } : t)
+    const newStatus: 'todo' | 'in_progress' | 'done' = task.status === 'done' ? 'todo' : 'done'
+    const tasks = (selectedProject.tasks || []).map((t) => t.id === taskId ? { ...t, status: newStatus as 'todo' | 'in_progress' | 'done' } : t)
     const updated = { ...selectedProject, tasks }
     setSelectedProject(updated); setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
     try { await fetch(`/api/projects/${selectedProject.id}/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) }) } catch { /* */ }
