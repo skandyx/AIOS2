@@ -1121,7 +1121,12 @@ export default function ProjectsModule() {
     setFilesLoading(true)
     try {
       const res = await fetch(`/api/projects/${projectId}/files`)
-      if (res.ok) { const data = await res.json(); setProjectFiles(data.files || []) }
+      if (res.ok) {
+        const data = await res.json()
+        // API returns { files: [...] } but also handle bare array for robustness
+        const files = Array.isArray(data) ? data : (data.files || [])
+        setProjectFiles(files)
+      }
     } catch { /* */ } finally { setFilesLoading(false) }
   }
 

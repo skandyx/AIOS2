@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import archiver from 'archiver'
+// @ts-expect-error - ZipArchive is a runtime export of archiver not reflected in types
+import { ZipArchive } from 'archiver'
 
 // GET /api/projects/[id]/download - Download project as ZIP
 export async function GET(
@@ -24,22 +25,15 @@ export async function GET(
     }
 
     // Create a ZIP archive using archiver
-    const archive = archiver('zip', { zlib: { level: 9 } })
+    const archive = new ZipArchive({ zlib: { level: 9 } })
 
     // Collect archive data in a buffer
-    const chunks: Uint8Array[] = []
-    archive.on('data', (chunk: Uint8Array) => chunks.push(chunk))
+    const chunks: Buffer[] = []
+    archive.on('data', (chunk: Buffer) => chunks.push(chunk))
 
-    const archiveFinished = new Promise<Uint8Array>((resolve, reject) => {
+    const archiveFinished = new Promise<Buffer>((resolve, reject) => {
       archive.on('end', () => {
-        const total = chunks.reduce((acc, c) => acc + c.length, 0)
-        const result = new Uint8Array(total)
-        let offset = 0
-        for (const c of chunks) {
-          result.set(c, offset)
-          offset += c.length
-        }
-        resolve(result)
+        resolve(Buffer.concat(chunks))
       })
       archive.on('error', reject)
     })
@@ -60,7 +54,7 @@ export async function GET(
     const zipBuffer = await archiveFinished
 
     // Return the ZIP as a downloadable response
-    return new NextResponse(Buffer.from(zipBuffer), {
+    return new NextResponse(zipBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',

@@ -260,6 +260,76 @@ Generate documentation now.`
       data: { readme, documentation },
     })
 
+    // Also save documentation as ProjectFile entries so they appear in the Code tab
+    try {
+      // Save README.md as a project file
+      const existingReadme = await db.projectFile.findFirst({
+        where: { projectId, path: 'README.md' },
+      })
+      if (existingReadme) {
+        await db.projectFile.update({
+          where: { id: existingReadme.id },
+          data: { content: readme, size: Buffer.byteLength(readme, 'utf-8'), source: 'generated', language: 'markdown' },
+        })
+      } else {
+        await db.projectFile.create({
+          data: {
+            projectId,
+            name: 'README.md',
+            path: 'README.md',
+            content: readme,
+            language: 'markdown',
+            size: Buffer.byteLength(readme, 'utf-8'),
+            source: 'generated',
+            isDirectory: false,
+          },
+        })
+      }
+
+      // Save documentation as a project file
+      const existingDocs = await db.projectFile.findFirst({
+        where: { projectId, path: 'docs/ARCHITECTURE.md' },
+      })
+      if (existingDocs) {
+        await db.projectFile.update({
+          where: { id: existingDocs.id },
+          data: { content: documentation, size: Buffer.byteLength(documentation, 'utf-8'), source: 'generated', language: 'markdown' },
+        })
+      } else {
+        // Ensure docs directory exists
+        const existingDocsDir = await db.projectFile.findFirst({
+          where: { projectId, path: 'docs', isDirectory: true },
+        })
+        if (!existingDocsDir) {
+          await db.projectFile.create({
+            data: {
+              projectId,
+              name: 'docs',
+              path: 'docs',
+              isDirectory: true,
+              source: 'generated',
+              size: 0,
+            },
+          })
+        }
+
+        await db.projectFile.create({
+          data: {
+            projectId,
+            name: 'ARCHITECTURE.md',
+            path: 'docs/ARCHITECTURE.md',
+            content: documentation,
+            language: 'markdown',
+            size: Buffer.byteLength(documentation, 'utf-8'),
+            source: 'generated',
+            isDirectory: false,
+          },
+        })
+      }
+    } catch (fileError) {
+      console.error('Failed to save documentation as project files:', fileError)
+    }
+
     return true
   } catch (error) {
     console.error('Auto-documentation generation failed:', error)
