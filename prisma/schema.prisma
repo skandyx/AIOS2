@@ -133,8 +133,8 @@ model Agent {
   conversations Conversation[] // Conversations this agent is assigned to
   messages      Message[]      // Messages authored by this agent
   tasksAssigned Task[]         @relation("TaskAssignee") // Tasks assigned to this agent
-  activities    AgentActivity[] // Activities performed by this agent
-  discussions   AgentDiscussion[] // Discussions by this agent
+  sentMessages  AgentMessage[] @relation("AgentMessagesFrom") // Messages sent by this agent
+  receivedMessages AgentMessage[] @relation("AgentMessagesTo") // Messages received by this agent
 }
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
@@ -173,7 +173,6 @@ model Task {
   subTasks     Task[]  @relation("TaskHierarchy")
 
   memories    Memory[] // Memories related to this task
-  activities  AgentActivity[] // Activities related to this task
 
   @@index([status])
   @@index([priority])
@@ -400,30 +399,175 @@ model Project {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   // GitHub integration
-  githubRepoUrl    String?   // GitHub repository URL after push
-  githubBranch     String?   @default("main") // Branch name
-  githubStatus     String?   @default("none") // "none" | "linked" | "pushed" | "error"
-  githubPushedAt   DateTime? // When the project was pushed to GitHub
+  repoUrl       String?  // GitHub repository URL
+  repoOwner     String?  // GitHub repo owner
+  repoName      String?  // GitHub repo name
+  repoBranch    String?  // Default branch
+  githubToken   String?  // GitHub personal access token (stored encrypted reference)
+  localPath     String?  // Local filesystem path for project files
 
   // Orchestrator
-  orchestratorStatus     String?    @default("pending") // "pending" | "analyzing" | "assigning" | "discussing" | "working" | "completed" | "failed"
-  orchestratorStartedAt  DateTime?
-  orchestratorCompletedAt DateTime?
+  orchestratorStatus String? // "idle" | "analyzing" | "assigning" | "running" | "completed" | "failed"
+  orchestratorLog    String? // JSON array of orchestrator events/actions
+
+  // Documentation
+  documentation String?  // AI-generated project documentation (markdown)
+  readme        String?  // Generated README content
+
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Relations
   tasks         Task[]
   projectSkills ProjectSkill[]
   projectMCPServers ProjectMCPServer[]
-  activities    AgentActivity[]
-  files         ProjectFile[]
-  discussions   AgentDiscussion[]
+  projectFiles  ProjectFile[]
+  agentMessages AgentMessage[]
+  codeAnalyses  CodeAnalysis[]
+  graphNodes    KnowledgeNode[]
+  graphEdges    KnowledgeEdge[]
 
   @@index([userId])
   @@index([status])
+  @@index([orchestratorStatus])
+}
+
+// ─── Project Files ──────────────────────────────────────────────────────────
+
+model ProjectFile {
+  id          String   @id @default(cuid())
+  name        String   // File name
+  path        String   // File path relative to project root
+  content     String?  // File content (text files only)
+  language    String?  // Programming language (for syntax highlighting)
+  size        Int      @default(0) // File size in bytes
+  mimeType    String?  // MIME type
+  checksum    String?  // File content hash (for change detection)
+  isDirectory Boolean  @default(false)
+  parentId    String?  // Parent directory file ID
+  source      String   @default("upload") // "upload" | "github" | "generated" | "local"
+  metadata    String?  // JSON string for additional metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, path])
+  @@index([projectId, parentId])
+}
+
+// ─── Agent Communication ───────────────────────────────────────────────────
+
+model AgentMessage {
+  id          String   @id @default(cuid())
+  fromAgentId String?  // Sending agent ID (null for orchestrator/system)
+  toAgentId   String?  // Receiving agent ID (null for broadcast)
+  fromRole    String   // "orchestrator" | "agent" | "system" | "user"
+  toRole      String?  // "agent" | "orchestrator" | "all"
+  type        String   @default("instruction") // "instruction" | "result" | "discussion" | "status" | "question" | "error"
+  content     String   // Message content
+  taskIds     String?  // JSON array of related task IDs
+  metadata    String?  // JSON string for additional metadata
+  createdAt   DateTime @default(now())
+
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  fromAgent   Agent?   @relation("AgentMessagesFrom", fields: [fromAgentId], references: [id], onDelete: SetNull)
+  toAgent     Agent?   @relation("AgentMessagesTo", fields: [toAgentId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([fromAgentId])
+  @@index([toAgentId])
+  @@index([createdAt])
+}
+
+// ─── Knowledge Graph ────────────────────────────────────────────────────────
+
+model KnowledgeNode {
+  id          String   @id @default(cuid())
+  type        String   // "file" | "function" | "class" | "module" | "import" | "export" | "dependency" | "config" | "concept"
+  name        String   // Node name (e.g., function name, file path)
+  path        String?  // File path (for code entities)
+  description String?  // AI-generated description
+  summary     String?  // Short summary for graph tooltip
+  language    String?  // Programming language
+  complexity  Int?     // Cyclomatic complexity score
+  linesOfCode Int?     // Lines of code
+  dependencies String? // JSON array of dependency names
+  metadata    String?  // JSON string for additional metadata
+  importance  Float    @default(0.5) // 0.0 - 1.0 importance score
+  isExternal  Boolean  @default(false) // External dependency?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  sourceEdges KnowledgeEdge[] @relation("NodeSource")
+  targetEdges KnowledgeEdge[] @relation("NodeTarget")
+  codeAnalyses CodeAnalysis[]
+
+  @@index([projectId])
+  @@index([type])
+  @@index([name])
+}
+
+model KnowledgeEdge {
+  id          String   @id @default(cuid())
+  type        String   // "imports" | "calls" | "extends" | "implements" | "uses" | "depends_on" | "contains" | "exports" | "references" | "inherits"
+  label       String?  // Edge label for display
+  weight      Float    @default(1.0) // Edge weight/importance
+  metadata    String?  // JSON string for additional metadata
+  createdAt   DateTime @default(now())
+
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  sourceId    String
+  source      KnowledgeNode @relation("NodeSource", fields: [sourceId], references: [id], onDelete: Cascade)
+
+  targetId    String
+  target      KnowledgeNode @relation("NodeTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([sourceId])
+  @@index([targetId])
+  @@index([type])
+}
+
+// ─── Code Analysis ──────────────────────────────────────────────────────────
+
+model CodeAnalysis {
+  id            String   @id @default(cuid())
+  type          String   // "security" | "bug" | "quality" | "performance" | "dependency" | "architecture"
+  severity      String   // "critical" | "high" | "medium" | "low" | "info"
+  title         String   // Issue title
+  description   String   // Detailed description
+  filePath      String?  // File path where issue was found
+  lineStart     Int?     // Start line number
+  lineEnd       Int?     // End line number
+  codeSnippet   String?  // Relevant code snippet
+  suggestion    String?  // AI-generated fix suggestion
+  ruleId        String?  // Linter rule ID (e.g., "no-eval", "sql-injection")
+  category      String?  // Sub-category (e.g., "xss", "injection", "dead-code")
+  isResolved    Boolean  @default(false)
+  resolvedAt    DateTime?
+  metadata      String?  // JSON string for additional metadata
+  createdAt     DateTime @default(now())
+
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  nodeId        String?  // Related knowledge graph node
+  node          KnowledgeNode? @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([type])
+  @@index([severity])
+  @@index([isResolved])
 }
 
 model ProjectSkill {
@@ -448,68 +592,4 @@ model ProjectMCPServer {
   createdAt  DateTime  @default(now())
 
   @@unique([projectId, mcpServerId])
-}
-
-// ─── Agent Activity ──────────────────────────────────────────────────────────
-
-model AgentActivity {
-  id          String   @id @default(cuid())
-  agentId     String?  // Agent that performed the action
-  agent       Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  agentName   String   // Agent display name at time of action
-  agentType   String   // Agent type
-  projectId   String?  // Project this relates to
-  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  taskId      String?  // Task this relates to
-  task        Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  action      String   // Description of what happened
-  type        String   @default("status") // "status" | "task" | "discussion" | "milestone" | "error"
-  status      String   @default("active") // "active" | "idle" | "busy" | "error" | "completed"
-  metadata    String?  // JSON string for additional data
-  createdAt   DateTime @default(now())
-
-  @@index([projectId])
-  @@index([agentId])
-  @@index([createdAt])
-}
-
-// ─── Project Files ────────────────────────────────────────────────────────────
-
-model ProjectFile {
-  id          String   @id @default(cuid())
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  filename    String   // Original filename
-  path        String   // Virtual path within the project (e.g., "src/components/App.tsx")
-  content     String   // File content (base64 encoded for binary, plain text for text files)
-  mimeType    String?  // MIME type
-  size        Int      // File size in bytes
-  encoding    String   @default("utf-8") // "utf-8" | "base64"
-  source      String   @default("upload") // "upload" | "generated" | "orchestrator"
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([projectId])
-  @@index([path])
-}
-
-// ─── Agent Discussions ──────────────────────────────────────────────────────
-
-model AgentDiscussion {
-  id          String   @id @default(cuid())
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  agentId     String?
-  agent       Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  agentName   String   // Agent display name
-  agentType   String   // Agent type
-  content     String   // Discussion message content
-  round       Int      @default(1) // Discussion round number
-  type        String   @default("discussion") // "discussion" | "instruction" | "status" | "milestone"
-  metadata    String?  // JSON string for additional data
-  createdAt   DateTime @default(now())
-
-  @@index([projectId])
-  @@index([agentId])
-  @@index([createdAt])
 }

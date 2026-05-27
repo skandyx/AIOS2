@@ -1,15 +1,16 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, ComponentType } from 'react';
+import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { io } from 'socket.io-client';
 import {
   MessageSquare, Bot, Brain, Workflow, Activity, Puzzle,
   Cpu, Terminal, Shield, Link2, Mic, ChevronLeft, ChevronRight,
-  Bell, Search, Command, Zap, Wifi, WifiOff,
+  Bell, Search, Command, Zap, Wifi, WifiOff, Settings,
   Sparkles, LayoutDashboard, Volume2, VolumeX, X, CheckCircle2,
   AlertTriangle, AlertCircle, Info, Maximize2, Minimize2,
-  Wrench, FolderKanban, Package, Menu
+  Wrench, FolderKanban, Package, Menu, Network, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,24 +22,41 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useAIOSStore, type AIModule } from '@/lib/store';
 
-// Module imports (all default exports)
+// Module imports — Dashboard loaded eagerly, others lazy-loaded via dynamic()
 import DashboardModule from '@/components/modules/DashboardModule';
-import ChatModule from '@/components/modules/ChatModule';
-import VoiceModule from '@/components/modules/VoiceModule';
-import AgentsModule from '@/components/modules/AgentsModule';
-import MemoryModule from '@/components/modules/MemoryModule';
-import WorkflowsModule from '@/components/modules/WorkflowsModule';
-import MonitoringModule from '@/components/modules/MonitoringModule';
-import PluginsModule from '@/components/modules/PluginsModule';
-import ModelsModule from '@/components/modules/ModelsModule';
-import TerminalModule from '@/components/modules/TerminalModule';
-import SecurityModule from '@/components/modules/SecurityModule';
-import IntegrationsModule from '@/components/modules/IntegrationsModule';
-import SkillsModule from '@/components/modules/SkillsModule';
-import MCPModule from '@/components/modules/MCPModule';
-import ProjectsModule from '@/components/modules/ProjectsModule';
+
+const loadingFallback = () => (
+  <div className="flex items-center justify-center h-full">
+    <div className="text-center">
+      <Loader2 className="h-8 w-8 text-cyan-400 animate-spin mx-auto mb-3" />
+      <p className="text-sm text-muted-foreground">Loading module...</p>
+    </div>
+  </div>
+);
+
+const ChatModule = dynamic(() => import('@/components/modules/ChatModule'), { loading: loadingFallback, ssr: false });
+const VoiceModule = dynamic(() => import('@/components/modules/VoiceModule'), { loading: loadingFallback, ssr: false });
+const AgentsModule = dynamic(() => import('@/components/modules/AgentsModule'), { loading: loadingFallback, ssr: false });
+const MemoryModule = dynamic(() => import('@/components/modules/MemoryModule'), { loading: loadingFallback, ssr: false });
+const WorkflowsModule = dynamic(() => import('@/components/modules/WorkflowsModule'), { loading: loadingFallback, ssr: false });
+const MonitoringModule = dynamic(() => import('@/components/modules/MonitoringModule'), { loading: loadingFallback, ssr: false });
+const PluginsModule = dynamic(() => import('@/components/modules/PluginsModule'), { loading: loadingFallback, ssr: false });
+const ModelsModule = dynamic(() => import('@/components/modules/ModelsModule'), { loading: loadingFallback, ssr: false });
+const TerminalModule = dynamic(() => import('@/components/modules/TerminalModule'), { loading: loadingFallback, ssr: false });
+const SecurityModule = dynamic(() => import('@/components/modules/SecurityModule'), { loading: loadingFallback, ssr: false });
+const IntegrationsModule = dynamic(() => import('@/components/modules/IntegrationsModule'), { loading: loadingFallback, ssr: false });
+const SkillsModule = dynamic(() => import('@/components/modules/SkillsModule'), { loading: loadingFallback, ssr: false });
+const MCPModule = dynamic(() => import('@/components/modules/MCPModule'), { loading: loadingFallback, ssr: false });
+const ProjectsModule = dynamic(() => import('@/components/modules/ProjectsModule'), { loading: loadingFallback, ssr: false });
+const KnowledgeGraphModule = dynamic(() => import('@/components/modules/KnowledgeGraphModule'), { loading: loadingFallback, ssr: false });
 
 // ─── Navigation Config ──────────────────────────────────────────────────────────
 
@@ -66,6 +84,7 @@ const navItems: NavItem[] = [
   { id: 'terminal', label: 'Terminal', icon: Terminal, color: 'text-lime-400', shortcut: '9' },
   { id: 'security', label: 'Security', icon: Shield, color: 'text-red-400', shortcut: '0' },
   { id: 'integrations', label: 'Integrations', icon: Link2, color: 'text-orange-400', shortcut: '-' },
+  { id: 'knowledge-graph', label: 'Knowledge Graph', icon: Network, color: 'text-cyan-400', shortcut: '=' },
 ];
 
 // ─── Module Render Map ──────────────────────────────────────────────────────────
@@ -86,6 +105,7 @@ const moduleComponents: Record<AIModule, ComponentType> = {
   terminal: TerminalModule,
   security: SecurityModule,
   integrations: IntegrationsModule,
+  'knowledge-graph': KnowledgeGraphModule,
 };
 
 // ─── Error Boundary ────────────────────────────────────────────────────────────
@@ -159,16 +179,26 @@ export default function AIOSDashboard() {
 
   // ─── HTTP Health Check (fallback for online status) ─────────────────────
   useEffect(() => {
+    let retries = 0;
     const checkHealth = async () => {
       try {
-        const res = await fetch('/api/monitoring');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch('/api/monitoring', { signal: controller.signal });
+        clearTimeout(timeoutId);
         setIsServerOnline(res.ok);
+        if (res.ok) retries = 0;
       } catch {
+        // Server might be starting up — retry more aggressively at first
+        if (retries < 5) {
+          retries++;
+          setTimeout(checkHealth, 2000 * retries);
+        }
         setIsServerOnline(false);
       }
     };
     checkHealth();
-    const interval = setInterval(checkHealth, 60000);
+    const interval = setInterval(checkHealth, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -181,9 +211,9 @@ export default function AIOSDashboard() {
         transports: ['websocket', 'polling'],
         forceNew: true,
         reconnection: true,
-        reconnectionAttempts: 3,
-        reconnectionDelay: 2000,
-        timeout: 5000,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 3000,
+        timeout: 10000,
       });
 
       socketInstance.on('connect', () => {
@@ -239,7 +269,7 @@ export default function AIOSDashboard() {
   // ─── Clock (client-only to avoid hydration mismatch) ───────────────────
   useEffect(() => {
     const tick = () => setCurrentTime(new Date());
-    tick();
+    tick(); // Initial set on mount (client-only)
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, []);
@@ -247,12 +277,14 @@ export default function AIOSDashboard() {
   // ─── Keyboard Shortcuts ─────────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl + K for command palette
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setCommandPaletteOpen(prev => !prev);
         setCommandSearch('');
       }
 
+      // Number keys for module switching (only when not typing in input)
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       const numKey = parseInt(e.key);
@@ -269,6 +301,7 @@ export default function AIOSDashboard() {
         }
       }
 
+      // Escape to close modals
       if (e.key === 'Escape') {
         setCommandPaletteOpen(false);
         setShowNotifications(false);
@@ -307,6 +340,7 @@ export default function AIOSDashboard() {
     { id: 'terminal', label: 'Go to Terminal', icon: Terminal, module: 'terminal' as AIModule },
     { id: 'security', label: 'Go to Security', icon: Shield, module: 'security' as AIModule },
     { id: 'integrations', label: 'Go to Integrations', icon: Link2, module: 'integrations' as AIModule },
+    { id: 'knowledge-graph', label: 'Go to Knowledge Graph', icon: Network, module: 'knowledge-graph' as AIModule },
   ];
 
   const filteredCommands = commandActions.filter(cmd =>
@@ -336,6 +370,7 @@ export default function AIOSDashboard() {
         </AnimatePresence>
 
         {/* ─── Left Sidebar ─────────────────────────────────────────────── */}
+        {/* Desktop: always visible, can collapse */}
         <motion.aside
           className={`relative flex flex-col border-r border-border/50 bg-card/30 backdrop-blur-xl z-20 
             hidden md:flex
@@ -415,12 +450,15 @@ export default function AIOSDashboard() {
 
           {/* Sidebar Footer */}
           <div className="border-t border-border/50 p-2 space-y-1">
+            {/* Connection Status */}
             <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${isConnected || isServerOnline ? 'text-emerald-400' : 'text-red-400'}`}>
               {isConnected || isServerOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
               {!sidebarCollapsed && (
                 <span className="text-xs">{isConnected ? 'Real-time' : isServerOnline ? 'Online' : 'Offline'}</span>
               )}
             </div>
+
+            {/* Collapse Toggle */}
             <button
               onClick={toggleSidebar}
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors w-full"
@@ -447,6 +485,7 @@ export default function AIOSDashboard() {
               transition={{ duration: 0.2, ease: 'easeInOut' }}
               className="fixed left-0 top-0 bottom-0 w-[280px] flex flex-col border-r border-border/50 bg-card/95 backdrop-blur-xl z-40 md:hidden"
             >
+              {/* Logo */}
               <div className="flex items-center gap-3 px-4 h-14 border-b border-border/50">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-emerald-500 flex items-center justify-center aios-glow flex-shrink-0">
                   <Sparkles className="w-4 h-4 text-white" />
@@ -462,6 +501,8 @@ export default function AIOSDashboard() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
+
+              {/* Navigation Items */}
               <ScrollArea className="flex-1 py-2">
                 <nav className="flex flex-col gap-1 px-2">
                   {navItems.map((item) => {
@@ -487,6 +528,8 @@ export default function AIOSDashboard() {
                   })}
                 </nav>
               </ScrollArea>
+
+              {/* Footer */}
               <div className="border-t border-border/50 p-3">
                 <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${isConnected || isServerOnline ? 'text-emerald-400' : 'text-red-400'}`}>
                   {isConnected || isServerOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
@@ -501,7 +544,9 @@ export default function AIOSDashboard() {
         <div className="flex-1 flex flex-col min-w-0">
           {/* ─── Top Header ─────────────────────────────────────────────── */}
           <header className="h-14 border-b border-border/50 bg-card/30 backdrop-blur-xl flex items-center justify-between px-3 sm:px-4 z-10">
+            {/* Left: Mobile menu + Module Title */}
             <div className="flex items-center gap-2 sm:gap-3">
+              {/* Mobile menu button */}
               <Button
                 variant="ghost"
                 size="icon"
@@ -525,6 +570,7 @@ export default function AIOSDashboard() {
               </div>
             </div>
 
+            {/* Center: Quick Stats */}
             <div className="hidden md:flex items-center gap-4 text-xs text-muted-foreground">
               <div className="flex items-center gap-1.5">
                 <Bot className="w-3.5 h-3.5 text-cyan-400" />
@@ -542,7 +588,9 @@ export default function AIOSDashboard() {
               </div>
             </div>
 
+            {/* Right: Actions */}
             <div className="flex items-center gap-2">
+              {/* Voice Toggle */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -557,6 +605,7 @@ export default function AIOSDashboard() {
                 <TooltipContent>{isVoiceActive ? 'Voice Active' : 'Voice Muted'}</TooltipContent>
               </Tooltip>
 
+              {/* Command Palette Trigger */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -571,6 +620,7 @@ export default function AIOSDashboard() {
                 <TooltipContent>Command Palette (⌘K)</TooltipContent>
               </Tooltip>
 
+              {/* Notifications */}
               <div className="relative">
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -592,6 +642,7 @@ export default function AIOSDashboard() {
                 </Tooltip>
               </div>
 
+              {/* Fullscreen */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -606,6 +657,7 @@ export default function AIOSDashboard() {
                 <TooltipContent>{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</TooltipContent>
               </Tooltip>
 
+              {/* Time (rendered only on client to avoid hydration mismatch) */}
               <div className="hidden lg:flex items-center gap-2 text-xs text-muted-foreground ml-2">
                 {currentTime ? (
                   <span className="font-mono">

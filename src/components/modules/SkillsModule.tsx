@@ -48,7 +48,9 @@ import {
   ToggleRight,
   FolderOpen,
   Globe,
+  Link2,
 } from 'lucide-react'
+import GitHubUrlVerifier, { type VerificationData } from '@/components/GitHubUrlVerifier'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -680,13 +682,15 @@ function ConfigureDialog({
 
 export default function SkillsModule() {
   // State
-  const [activeTab, setActiveTab] = useState<'marketplace' | 'installed'>('marketplace')
+  const [activeTab, setActiveTab] = useState<'marketplace' | 'installed' | 'url'>('marketplace')
+  const [githubVerification, setGithubVerification] = useState<VerificationData | null>(null)
+  const [installingFromUrl, setInstallingFromUrl] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState<SkillCategory | 'All'>('All')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [installedSkills, setInstalledSkills] = useState<InstalledSkill[]>([])
   const [searching, setSearching] = useState(false)
-  const [loadingInstalled, setLoadingInstalled] = useState(false)
+  const [loadingInstalled, setLoadingInstalled] = useState(true)
   const [searchError, setSearchError] = useState<string | null>(null)
   const [installError, setInstallError] = useState<string | null>(null)
 
@@ -925,6 +929,82 @@ export default function SkillsModule() {
     }
   }
 
+  // ── Install from URL Verification ──
+  const handleInstallFromGithub = async (data: VerificationData) => {
+    setInstallingFromUrl(true)
+    try {
+      const categoryMap: Record<string, string> = {
+        automation: 'Automation', development: 'Development', ai: 'AI',
+        data: 'Data', productivity: 'Productivity', communication: 'Communication', utility: 'Utility',
+      }
+      const category = categoryMap[data.detectedType] || 'Utility'
+      const permissions = DEFAULT_PERMISSIONS[category as SkillCategory] || []
+
+      if (data.repoInfo) {
+        // GitHub-based install
+        const repo = data.repoInfo
+        const slug = repo.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+
+        const res = await fetch('/api/skills', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: repo.name,
+            slug,
+            description: repo.description || `AI Skill from ${repo.full_name}`,
+            category,
+            sourceType: 'github',
+            repoUrl: repo.html_url,
+            repoOwner: repo.owner.login,
+            repoName: repo.name,
+            stars: repo.stargazers_count,
+            permissions,
+            config: {},
+          }),
+        })
+
+        if (res.ok) {
+          await fetchInstalled()
+          setGithubVerification(null)
+        }
+      } else if (data.source === 'url') {
+        // Direct URL-based install
+        const title = data.urlTitle || 'External Skill'
+        const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+        const description = data.readme
+          ? data.readme.substring(0, 200).replace(/[\n\r]/g, ' ').trim()
+          : `Skill from ${data.urlTitle || 'external URL'}`
+
+        const res = await fetch('/api/skills', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: title,
+            slug: slug || `skill-${Date.now()}`,
+            description,
+            category,
+            sourceType: 'url',
+            repoUrl: null,
+            repoOwner: null,
+            repoName: null,
+            stars: null,
+            permissions,
+            config: { sourceUrl: data.urlTitle },
+          }),
+        })
+
+        if (res.ok) {
+          await fetchInstalled()
+          setGithubVerification(null)
+        }
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setInstallingFromUrl(false)
+    }
+  }
+
   // ── Render ──
 
   return (
@@ -958,7 +1038,7 @@ export default function SkillsModule() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Tabs
             value={activeTab}
-            onValueChange={(v) => setActiveTab(v as 'marketplace' | 'installed')}
+            onValueChange={(v) => setActiveTab(v as 'marketplace' | 'installed' | 'url')}
           >
             <TabsList className="h-8 bg-neutral-900 border border-neutral-800">
               <TabsTrigger
@@ -967,6 +1047,13 @@ export default function SkillsModule() {
               >
                 <Search className="h-3 w-3" />
                 Marketplace
+              </TabsTrigger>
+              <TabsTrigger
+                value="url"
+                className="text-[11px] data-[state=active]:bg-neutral-800 data-[state=active]:text-cyan-400 gap-1.5 px-3"
+              >
+                <Link2 className="h-3 w-3" />
+                From URL
               </TabsTrigger>
               <TabsTrigger
                 value="installed"
@@ -1110,6 +1197,67 @@ export default function SkillsModule() {
                 </div>
               )}
             </>
+          )}
+
+          {/* ── From URL Tab ── */}
+          {activeTab === 'url' && (
+            <div className="max-w-2xl mx-auto space-y-6">
+              {/* Header */}
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <Link2 className="h-6 w-6 text-cyan-400" />
+                  <h3 className="text-lg font-semibold text-neutral-200">Install from URL</h3>
+                </div>
+                <p className="text-[12px] text-neutral-500 max-w-md mx-auto">
+                  Paste any URL — a GitHub repository, skill manifest, or documentation page — and we&apos;ll verify it, detect the type, and check if it&apos;s already installed.
+                </p>
+              </div>
+
+              {/* Verifier */}
+              <GitHubUrlVerifier
+                onVerified={setGithubVerification}
+                onInstall={handleInstallFromGithub}
+                installing={installingFromUrl}
+                placeholder="https://github.com/owner/repo or any skill URL"
+              />
+
+              {/* Help text */}
+              {!githubVerification && (
+                <div className="space-y-3 pt-4">
+                  <p className="text-[10px] text-neutral-600 text-center">What gets verified:</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-neutral-900/30 border border-neutral-800">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-[11px] text-neutral-300 font-medium">Repository Validity</p>
+                        <p className="text-[10px] text-neutral-600">Confirms the repo exists and is accessible</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-neutral-900/30 border border-neutral-800">
+                      <Sparkles className="h-4 w-4 text-cyan-400 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-[11px] text-neutral-300 font-medium">Auto-Detection</p>
+                        <p className="text-[10px] text-neutral-600">Identifies if it&apos;s a Skill, MCP, or Plugin</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-neutral-900/30 border border-neutral-800">
+                      <Shield className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-[11px] text-neutral-300 font-medium">Usefulness Score</p>
+                        <p className="text-[10px] text-neutral-600">Stars, activity, docs, license analysis</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-neutral-900/30 border border-neutral-800">
+                      <AlertCircle className="h-4 w-4 text-orange-400 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-[11px] text-neutral-300 font-medium">Duplicate Check</p>
+                        <p className="text-[10px] text-neutral-600">Warns if already installed in your system</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {/* ── Installed Tab ── */}

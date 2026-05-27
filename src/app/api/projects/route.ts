@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getDefaultUserId } from '@/lib/auth'
-import { orchestrateProject, ensureDefaultAgents } from '@/lib/orchestrator'
+import { runOrchestration } from '@/lib/orchestrator'
 
 // GET /api/projects - List all projects for the current user
 // Supports optional filters: ?status=in_progress, ?category=web_app
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/projects - Create a new project
+// POST /api/projects - Create a new project and auto-trigger orchestration
 export async function POST(request: NextRequest) {
   try {
     const userId = await getDefaultUserId()
@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
       notes,
       tags,
       dueDate,
+      localPath,
     } = body
 
     if (!name) {
@@ -84,6 +85,7 @@ export async function POST(request: NextRequest) {
         notes: notes || null,
         tags: tags ? JSON.stringify(tags) : null,
         dueDate: dueDate ? new Date(dueDate) : null,
+        localPath: localPath || null,
         startedAt: status === 'in_progress' ? new Date() : null,
         userId,
       },
@@ -98,20 +100,11 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Auto-trigger orchestration if the project has requirements or description
-    // This runs in the background and does not block the response
-    if (description || requirements) {
-      // Fire-and-forget: orchestrate in the background
-      // The project is already created and returned to the user
-      orchestrateProject(project.id).catch((err) => {
-        console.error(`Auto-orchestration failed for project ${project.id}:`, err)
-      })
-    } else {
-      // Ensure default agents exist even without auto-orchestration
-      ensureDefaultAgents().catch((err) => {
-        console.error('Failed to ensure default agents:', err)
-      })
-    }
+    // Auto-trigger orchestration after project creation
+    // Run in background - don't block the response
+    runOrchestration(project.id).catch((error) => {
+      console.error(`Auto-orchestration failed for project ${project.id}:`, error)
+    })
 
     return NextResponse.json(project, { status: 201 })
   } catch (error) {

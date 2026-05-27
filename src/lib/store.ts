@@ -17,7 +17,8 @@ export type AIModule =
   | "voice"
   | "skills"
   | "mcp"
-  | "projects";
+  | "projects"
+  | "knowledge-graph";
 
 export interface Conversation {
   id: string;

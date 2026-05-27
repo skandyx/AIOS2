@@ -46,7 +46,10 @@ import {
   Package,
   ExternalLink,
   ChevronRight,
+  Link2,
+  AlertCircle,
 } from 'lucide-react'
+import GitHubUrlVerifier, { type VerificationData } from '@/components/GitHubUrlVerifier'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -584,7 +587,9 @@ export default function PluginsModule() {
   const [selectedPlugin, setSelectedPlugin] = useState<Plugin | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [loading, setLoading] = useState<Record<string, boolean>>({})
-  const [view, setView] = useState<'marketplace' | 'installed'>('marketplace')
+  const [view, setView] = useState<'marketplace' | 'installed' | 'url'>('marketplace')
+  const [githubVerification, setGithubVerification] = useState<VerificationData | null>(null)
+  const [installingFromUrl, setInstallingFromUrl] = useState(false)
 
   // Fetch plugins from API
   const fetchPlugins = useCallback(async () => {
@@ -726,6 +731,42 @@ export default function PluginsModule() {
     setDetailOpen(true)
   }
 
+  // ── Install from GitHub URL ──
+  const handleInstallFromGithub = async (data: VerificationData) => {
+    if (!data.repoInfo) return
+
+    setInstallingFromUrl(true)
+    try {
+      const repo = data.repoInfo
+      const slug = repo.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+
+      const res = await fetch('/api/plugins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: repo.name,
+          slug,
+          description: repo.description || `Plugin from ${repo.full_name}`,
+          version: data.packageJson?.version || '1.0.0',
+          author: repo.owner.login,
+          category: 'development',
+          icon: '🔌',
+          permissions: [],
+          tags: repo.topics.slice(0, 5),
+        }),
+      })
+
+      if (res.ok) {
+        await fetchPlugins()
+        setGithubVerification(null)
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setInstallingFromUrl(false)
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -820,10 +861,11 @@ export default function PluginsModule() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <Tabs value={view} onValueChange={(v) => setView(v as 'marketplace' | 'installed')}>
+            <Tabs value={view} onValueChange={(v) => setView(v as 'marketplace' | 'installed' | 'url')}>
               <TabsList className="h-8 bg-muted/50">
                 <TabsTrigger value="marketplace" className="text-xs">All</TabsTrigger>
                 <TabsTrigger value="installed" className="text-xs">Installed</TabsTrigger>
+                <TabsTrigger value="url" className="text-xs gap-1"><Link2 className="h-3 w-3" />From URL</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -848,10 +890,65 @@ export default function PluginsModule() {
         </div>
       </div>
 
-      {/* Plugin Grid */}
+      {/* Plugin Grid / From URL */}
       <ScrollArea className="flex-1 min-h-0">
         <div className="p-6">
-          {filteredPlugins.length === 0 ? (
+          {view === 'url' ? (
+            /* From URL Tab */
+            <div className="max-w-2xl mx-auto space-y-6">
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <Link2 className="h-6 w-6 text-primary" />
+                  <h3 className="text-lg font-semibold">Install Plugin from GitHub URL</h3>
+                </div>
+                <p className="text-[12px] text-muted-foreground max-w-md mx-auto">
+                  Paste a GitHub repository URL and we&apos;ll verify if it&apos;s a useful Plugin, MCP, or Skill — checking compatibility, activity, and whether it&apos;s already installed.
+                </p>
+              </div>
+              <GitHubUrlVerifier
+                onVerified={setGithubVerification}
+                onInstall={handleInstallFromGithub}
+                installing={installingFromUrl}
+                placeholder="https://github.com/owner/plugin-repo"
+              />
+              {!githubVerification && (
+                <div className="space-y-3 pt-4">
+                  <p className="text-[10px] text-muted-foreground text-center">What gets verified:</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/50">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-[11px] font-medium">Repository Validity</p>
+                        <p className="text-[10px] text-muted-foreground">Confirms the repo exists and is accessible</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/50">
+                      <Sparkles className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-[11px] font-medium">Auto-Detection</p>
+                        <p className="text-[10px] text-muted-foreground">Identifies if it&apos;s a Plugin, MCP, or Skill</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/50">
+                      <Shield className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-[11px] font-medium">Usefulness Score</p>
+                        <p className="text-[10px] text-muted-foreground">Stars, activity, docs, license analysis</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/50">
+                      <AlertCircle className="h-4 w-4 text-orange-500 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-[11px] font-medium">Duplicate Check</p>
+                        <p className="text-[10px] text-muted-foreground">Warns if already installed in your system</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            filteredPlugins.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Package className="mb-3 h-12 w-12 opacity-30" />
               <p className="text-sm">No plugins found</p>
@@ -878,6 +975,7 @@ export default function PluginsModule() {
                 ))}
               </AnimatePresence>
             </div>
+          )
           )}
         </div>
       </ScrollArea>

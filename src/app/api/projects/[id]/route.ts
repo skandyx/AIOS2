@@ -5,7 +5,9 @@ import { db } from '@/lib/db'
 function mapTaskStatus(status: string): string {
   switch (status) {
     case 'pending': return 'todo'
+    case 'in_progress': return 'in_progress'
     case 'completed': return 'done'
+    case 'failed': return 'failed'
     default: return status
   }
 }
@@ -63,49 +65,11 @@ export async function GET(
             },
           },
         },
-        // Include files from ProjectFile model
-        files: {
-          orderBy: { createdAt: 'desc' },
-          select: {
-            id: true,
-            filename: true,
-            path: true,
-            mimeType: true,
-            size: true,
-            encoding: true,
-            source: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
-        // Include latest 20 discussions from AgentDiscussion model
-        discussions: {
-          take: 20,
-          orderBy: { createdAt: 'desc' },
-          include: {
-            agent: {
-              select: { id: true, name: true, type: true, avatar: true },
-            },
-          },
-        },
-        // Include latest 20 activities from AgentActivity model
-        activities: {
-          take: 20,
-          orderBy: { createdAt: 'desc' },
-          include: {
-            agent: {
-              select: { id: true, name: true, type: true, avatar: true },
-            },
-          },
-        },
         _count: {
           select: {
             tasks: true,
             projectSkills: true,
             projectMCPServers: true,
-            files: true,
-            discussions: true,
-            activities: true,
           },
         },
       },
@@ -125,36 +89,6 @@ export async function GET(
         ...task,
         status: mapTaskStatus(task.status),
       })),
-      // Format discussions for frontend consumption
-      discussions: project.discussions.map(d => ({
-        id: d.id,
-        agentId: d.agentId,
-        agentName: d.agentName,
-        agentType: d.agentType,
-        agentAvatar: d.agent?.avatar || null,
-        content: d.content,
-        round: d.round,
-        type: d.type,
-        metadata: d.metadata ? JSON.parse(d.metadata) : null,
-        timestamp: d.createdAt.toISOString(),
-      })),
-      // Format activities for frontend consumption
-      activities: project.activities.map(a => ({
-        id: a.id,
-        agentId: a.agentId,
-        agentName: a.agentName,
-        agentType: a.agentType,
-        agentAvatar: a.agent?.avatar || null,
-        action: a.action,
-        type: a.type,
-        status: a.status,
-        metadata: a.metadata ? JSON.parse(a.metadata) : null,
-        timestamp: a.createdAt.toISOString(),
-      })),
-      // Expose orchestrator fields explicitly
-      orchestratorStatus: project.orchestratorStatus,
-      orchestratorStartedAt: project.orchestratorStartedAt?.toISOString() || null,
-      orchestratorCompletedAt: project.orchestratorCompletedAt?.toISOString() || null,
     }
 
     return NextResponse.json(mappedProject)
@@ -218,9 +152,6 @@ export async function PATCH(
             tasks: true,
             projectSkills: true,
             projectMCPServers: true,
-            files: true,
-            discussions: true,
-            activities: true,
           },
         },
       },
