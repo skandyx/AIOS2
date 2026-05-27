@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
     ".space-z.ai",
     "localhost",
     "127.0.0.1",
+    "preview-chat-d93e84e2-2cfa-4674-b194-ce1bf2b70d72.space-z.ai",
   ],
 };
 

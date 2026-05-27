@@ -1,3 +1,4 @@
 #!/bin/bash
 cd /home/z/my-project
-exec npx next dev -p 3000
+exec node node_modules/.bin/next dev -p 3000
+

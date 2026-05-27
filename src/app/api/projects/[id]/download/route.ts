@@ -1,11 +1,6 @@
-import { createRequire } from 'module'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-
-// Use createRequire to bypass Turbopack ESM static analysis
-// archiver is a CJS module and its named exports (ZipArchive, etc.) aren't detected by Turbopack
-const require = createRequire(import.meta.url)
-const { ZipArchive } = require('archiver')
+import JSZip from 'jszip'
 
 // GET /api/projects/[id]/download - Download project as ZIP
 export async function GET(
@@ -28,34 +23,22 @@ export async function GET(
       return NextResponse.json({ error: 'No files to download' }, { status: 400 })
     }
 
-    // Create a ZIP archive using archiver
-    const archive = new ZipArchive({ zlib: { level: 9 } })
-
-    // Collect archive data in a buffer
-    const chunks: Buffer[] = []
-    archive.on('data', (chunk: Buffer) => chunks.push(chunk))
-
-    const archiveFinished = new Promise<Buffer>((resolve, reject) => {
-      archive.on('end', () => {
-        resolve(Buffer.concat(chunks))
-      })
-      archive.on('error', reject)
-    })
+    // Create a ZIP archive using jszip
+    const zip = new JSZip()
 
     // Add each project file to the archive
     for (const file of project.projectFiles) {
       if (file.isDirectory) continue
       if (file.content) {
-        archive.append(file.content, { name: file.path })
+        zip.file(file.path, file.content)
       } else {
         // For files without content, add an empty placeholder
-        archive.append(`[Binary file: ${file.name}]`, { name: file.path })
+        zip.file(file.path, `[Binary file: ${file.name}]`)
       }
     }
 
-    await archive.finalize()
-
-    const zipBuffer = await archiveFinished
+    // Generate the ZIP buffer
+    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 9 } })
 
     // Return the ZIP as a downloadable response
     return new NextResponse(zipBuffer, {

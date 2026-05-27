@@ -122,3 +122,27 @@ Stage Summary:
 - Code tab now properly refreshes when switching to it
 - Better error handling in file fetching
 - All modules should load correctly with no chunk errors
+
+---
+Task ID: 6
+Agent: Main Orchestrator
+Task: Fix recurring "Failed to load chunk" errors across all modules (SkillsModule, AgentsModule, etc.)
+
+Work Log:
+- Analyzed recurring chunk loading errors: "Failed to load chunk /_next/static/chunks/src_components_1900479f._.js from module SkillsModule.tsx"
+- Root cause #1: Broken archiver import in /api/projects/[id]/download/route.ts — `createRequire` + `require('archiver')` approach still caused Turbopack build failures, corrupting all chunks
+- Root cause #2: Stale .next cache from previous failed compilations
+- Root cause #3: Cross-origin request blocking — Next.js dev server blocked /_next/* requests from the preview panel (different origin)
+- Fixed archiver import: Replaced archiver entirely with jszip (already installed, proper ESM support): `import JSZip from 'jszip'`
+- Rewrote download route to use JSZip API: `new JSZip()`, `zip.file()`, `zip.generateAsync({ type: 'nodebuffer' })`
+- Cleared .next cache: `rm -rf .next` to remove stale chunks from previous broken compilations
+- Added preview panel origin to allowedDevOrigins in next.config.ts to fix cross-origin blocking
+- Verified lint passes cleanly with no errors
+- Verified dev server compiles and serves pages without errors
+- Verified all API endpoints return 200
+
+Stage Summary:
+- archiver replaced with jszip in download route (proper ESM, no Turbopack compatibility issues)
+- .next cache cleared to remove stale/broken chunks
+- Cross-origin blocking addressed in next.config.ts
+- All modules should now load without chunk errors
