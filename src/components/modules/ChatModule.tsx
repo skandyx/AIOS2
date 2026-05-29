@@ -96,6 +96,16 @@ const AVAILABLE_MODELS = [
   { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'Anthropic', emoji: '🎭', color: '#f59e0b' },
   // ── DeepSeek ──
   { id: 'deepseek-chat', name: 'DeepSeek V3', provider: 'DeepSeek', emoji: '🔍', color: '#ec4899' },
+  // ── Grok (xAI) ──
+  { id: 'grok-3', name: 'Grok 3', provider: 'Grok (xAI)', emoji: '🚀', color: '#ef4444' },
+  { id: 'grok-3-mini', name: 'Grok 3 Mini', provider: 'Grok (xAI)', emoji: '☄️', color: '#ef4444' },
+  { id: 'grok-2', name: 'Grok 2', provider: 'Grok (xAI)', emoji: '⚡', color: '#ef4444' },
+  // ── OpenRouter ──
+  { id: 'openrouter-auto', name: 'Auto (Cheapest)', provider: 'OpenRouter', emoji: '🔀', color: '#6366f1' },
+  { id: 'openrouter-claude-3.5-sonnet', name: 'Claude 3.5 Sonnet (OR)', provider: 'OpenRouter', emoji: '🎭', color: '#6366f1' },
+  { id: 'openrouter-gpt-4o', name: 'GPT-4o (OR)', provider: 'OpenRouter', emoji: '⚡', color: '#6366f1' },
+  { id: 'openrouter-deepseek-chat', name: 'DeepSeek V3 (OR)', provider: 'OpenRouter', emoji: '🔍', color: '#6366f1' },
+  { id: 'openrouter-grok-2', name: 'Grok 2 (OR)', provider: 'OpenRouter', emoji: '🚀', color: '#6366f1' },
   // ── Ollama (Local / Pi) ──
   { id: 'ollama-mistral', name: 'Mistral 7B (Ollama)', provider: 'Ollama', emoji: '🖥️', color: '#06b6d4' },
   { id: 'ollama-llama3.1', name: 'Llama 3.1 (Ollama)', provider: 'Ollama', emoji: '🖥️', color: '#06b6d4' },

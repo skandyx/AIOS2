@@ -348,7 +348,7 @@ if [[ ! -f ".env" ]]; then
         cp .env.example .env
         warn ".env created from .env.example."
     else
-        info "Generating default .env with Mistral API key..."
+        info "Generating default .env with API key placeholders..."
         mkdir -p "${DB_DIR}"
         cat > .env << ENVEOF
 DATABASE_URL=file:${DB_DIR}/custom.db
@@ -368,6 +368,12 @@ MISTRAL_API_KEY=
 
 # DeepSeek (https://platform.deepseek.com/api_keys)
 # DEEPSEEK_API_KEY=...
+
+# Grok xAI (https://console.x.ai/)
+# XAI_API_KEY=xai-...
+
+# OpenRouter (https://openrouter.ai/keys)
+# OPENROUTER_API_KEY=sk-or-...
 
 # Ollama (Local/Pi) - default: http://localhost:11434
 # OLLAMA_BASE_URL=http://localhost:11434
@@ -495,6 +501,8 @@ echo -e "${GREEN}${BOLD}║  Supported AI Providers:                            
 echo -e "${GREEN}${BOLD}║    • Z-AI (built-in, no key needed)                      ║${NC}"
 echo -e "${GREEN}${BOLD}║    • Mistral AI (key in .env)                             ║${NC}"
 echo -e "${GREEN}${BOLD}║    • OpenAI / Anthropic / Google / DeepSeek               ║${NC}"
+echo -e "${GREEN}${BOLD}║    • Grok xAI (key in .env)                               ║${NC}"
+echo -e "${GREEN}${BOLD}║    • OpenRouter (key in .env)                             ║${NC}"
 echo -e "${GREEN}${BOLD}║    • Ollama (local, for Raspberry Pi)                     ║${NC}"
 echo -e "${GREEN}${BOLD}║                                                          ║${NC}"
 echo -e "${GREEN}${BOLD}║  To stop services:                                        ║${NC}"

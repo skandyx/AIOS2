@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { runOrchestration } from '@/lib/orchestrator'
 
 // POST /api/projects/[id]/orchestrate - Trigger orchestrator for a project
 export async function POST(
@@ -8,6 +7,20 @@ export async function POST(
 ) {
   try {
     const { id } = await params
+
+    // Dynamic import so a broken orchestrator module returns a clear error
+    // instead of crashing this route at module-load time.
+    let runOrchestration: (projectId: string, options?: { skipDocumentation?: boolean }) => Promise<Record<string, unknown>>
+    try {
+      const mod = await import('@/lib/orchestrator')
+      runOrchestration = (mod as Record<string, unknown>).runOrchestration as typeof runOrchestration
+    } catch (importError) {
+      console.error('Failed to load orchestrator module:', importError)
+      return NextResponse.json(
+        { error: 'Orchestrator module is unavailable. Please check server configuration.' },
+        { status: 503 }
+      )
+    }
 
     const result = await runOrchestration(id)
 

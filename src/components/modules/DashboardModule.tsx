@@ -20,6 +20,7 @@ import {
   Circle, CheckCircle2, AlertCircle, Loader2,
   Server, Globe, GitBranch, Terminal, Eye,
 } from 'lucide-react'
+import { useAIOSStore, type AIModule } from '@/lib/store'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -311,6 +312,7 @@ function PulseRing({ size = 60, color = 'cyan' }: { size?: number; color?: strin
 // ─── Main Dashboard Module ────────────────────────────────────────────────────
 
 export default function DashboardModule() {
+  const setActiveModule = useAIOSStore((s) => s.setActiveModule)
   const [health, setHealth] = useState<SystemHealth>({
     cpu: 0, memory: 0, uptime: 0, activeAgents: 0,
     totalProjects: 0, activeProjects: 0, totalConversations: 0,
@@ -331,18 +333,18 @@ export default function DashboardModule() {
         const data = await res.json()
         setIsOnline(true)
         setHealth({
-          cpu: data.cpuUsage || Math.random() * 30 + 15,
-          memory: data.memoryUsage || Math.random() * 20 + 40,
-          uptime: data.uptime || 86400,
-          activeAgents: data.activeAgents || 3,
-          totalProjects: data.totalProjects || 0,
-          activeProjects: data.activeProjects || 0,
-          totalConversations: data.totalConversations || 0,
-          totalMemories: data.totalMemories || 0,
-          pendingTasks: data.pendingTasks || 0,
-          completedTasks: data.completedTasks || 0,
-          installedPlugins: data.installedPlugins || 0,
-          connectedIntegrations: data.connectedIntegrations || 0,
+          cpu: data.system?.cpu?.usage ?? 0,
+          memory: data.system?.ram?.usage ?? 0,
+          uptime: data.uptime ?? 86400,
+          activeAgents: data.agents?.active ?? 0,
+          totalProjects: 0,
+          activeProjects: 0,
+          totalConversations: data.conversations?.total ?? 0,
+          totalMemories: data.memories?.total ?? 0,
+          pendingTasks: data.tasks?.pending ?? 0,
+          completedTasks: data.tasks?.completed ?? 0,
+          installedPlugins: data.plugins?.enabled ?? 0,
+          connectedIntegrations: data.integrations?.connected ?? 0,
         })
       } else {
         setIsOnline(false)
@@ -729,17 +731,18 @@ export default function DashboardModule() {
               <CardContent className="px-4 pb-4">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
-                    { label: 'New Project', icon: FolderKanban, color: 'text-rose-400', bg: 'bg-rose-500/10 hover:bg-rose-500/20', desc: 'Start a new AI project' },
-                    { label: 'AI Chat', icon: MessageSquare, color: 'text-cyan-400', bg: 'bg-cyan-500/10 hover:bg-cyan-500/20', desc: 'Talk to the AI' },
-                    { label: 'View Agents', icon: Bot, color: 'text-emerald-400', bg: 'bg-emerald-500/10 hover:bg-emerald-500/20', desc: 'Monitor your agents' },
-                    { label: 'Terminal', icon: Terminal, color: 'text-lime-400', bg: 'bg-lime-500/10 hover:bg-lime-500/20', desc: 'Open terminal' },
-                    { label: 'Skills', icon: Sparkles, color: 'text-violet-400', bg: 'bg-violet-500/10 hover:bg-violet-500/20', desc: 'Manage skills' },
-                    { label: 'MCP Registry', icon: Server, color: 'text-amber-400', bg: 'bg-amber-500/10 hover:bg-amber-500/20', desc: 'Browse MCP servers' },
-                    { label: 'Knowledge Graph', icon: Globe, color: 'text-cyan-400', bg: 'bg-cyan-500/10 hover:bg-cyan-500/20', desc: 'Visualize code' },
-                    { label: 'Security', icon: Shield, color: 'text-red-400', bg: 'bg-red-500/10 hover:bg-red-500/20', desc: 'Security scan' },
+                    { label: 'New Project', icon: FolderKanban, color: 'text-rose-400', bg: 'bg-rose-500/10 hover:bg-rose-500/20', desc: 'Start a new AI project', module: 'projects' as AIModule },
+                    { label: 'AI Chat', icon: MessageSquare, color: 'text-cyan-400', bg: 'bg-cyan-500/10 hover:bg-cyan-500/20', desc: 'Talk to the AI', module: 'chat' as AIModule },
+                    { label: 'View Agents', icon: Bot, color: 'text-emerald-400', bg: 'bg-emerald-500/10 hover:bg-emerald-500/20', desc: 'Monitor your agents', module: 'agents' as AIModule },
+                    { label: 'Terminal', icon: Terminal, color: 'text-lime-400', bg: 'bg-lime-500/10 hover:bg-lime-500/20', desc: 'Open terminal', module: 'terminal' as AIModule },
+                    { label: 'Skills', icon: Sparkles, color: 'text-violet-400', bg: 'bg-violet-500/10 hover:bg-violet-500/20', desc: 'Manage skills', module: 'skills' as AIModule },
+                    { label: 'MCP Registry', icon: Server, color: 'text-amber-400', bg: 'bg-amber-500/10 hover:bg-amber-500/20', desc: 'Browse MCP servers', module: 'mcp' as AIModule },
+                    { label: 'Knowledge Graph', icon: Globe, color: 'text-cyan-400', bg: 'bg-cyan-500/10 hover:bg-cyan-500/20', desc: 'Visualize code', module: 'knowledge-graph' as AIModule },
+                    { label: 'Security', icon: Shield, color: 'text-red-400', bg: 'bg-red-500/10 hover:bg-red-500/20', desc: 'Security scan', module: 'security' as AIModule },
                   ].map((action) => (
                     <button
                       key={action.label}
+                      onClick={() => setActiveModule(action.module)}
                       className={`flex flex-col items-center gap-2 p-3 rounded-xl border border-neutral-800 ${action.bg} transition-all duration-200 group`}
                     >
                       <action.icon className={`size-5 ${action.color} group-hover:scale-110 transition-transform`} />

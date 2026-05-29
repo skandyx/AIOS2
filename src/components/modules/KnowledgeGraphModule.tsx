@@ -221,6 +221,13 @@ export default function KnowledgeGraphModule() {
   const [showAnalysisPanel, setShowAnalysisPanel] = useState(false)
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number; node: GraphNode } | null>(null)
 
+  // Inspect Link state
+  const [inspectUrl, setInspectUrl] = useState('')
+  const [inspecting, setInspecting] = useState(false)
+  const [inspectResult, setInspectResult] = useState<{ url: string; title: string; links: string[]; content: string } | null>(null)
+  const [showInspectDialog, setShowInspectDialog] = useState(false)
+  const [inspectError, setInspectError] = useState<string | null>(null)
+
   // ─── Refs ───────────────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null)
   const graphRef = useRef<any>(null)
@@ -408,6 +415,40 @@ export default function KnowledgeGraphModule() {
       // silently fail
     } finally {
       setQueryLoading(false)
+    }
+  }
+
+  // ─── Inspect Link ───────────────────────────────────────────────────────
+  const handleInspectLink = async (targetUrl?: string) => {
+    const urlToInspect = targetUrl || inspectUrl.trim()
+    if (!selectedProjectId || !urlToInspect) return
+    setInspecting(true)
+    setInspectResult(null)
+    setInspectError(null)
+    try {
+      const res = await fetch('/api/knowledge-graph/inspect-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: urlToInspect, projectId: selectedProjectId }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setInspectResult({
+          url: urlToInspect,
+          title: data.node?.name || urlToInspect,
+          links: data.links || [],
+          content: data.content || '',
+        })
+        // Refresh graph data
+        fetchGraphData()
+      } else {
+        const errData = await res.json().catch(() => ({ error: 'Unknown error' }))
+        setInspectError(errData.error || 'Failed to inspect link')
+      }
+    } catch {
+      setInspectError('Network error. Please try again.')
+    } finally {
+      setInspecting(false)
     }
   }
 
@@ -617,6 +658,17 @@ export default function KnowledgeGraphModule() {
           >
             {analyzing ? <Loader2 className="size-3.5 animate-spin" /> : <Code2 className="size-3.5" />}
             {analyzing ? 'Analyzing...' : 'Analyze Code'}
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => { setShowInspectDialog(true); setInspectResult(null); setInspectError(null) }}
+            disabled={!selectedProjectId}
+            className="h-8 border-neutral-700 text-slate-300 hover:text-white gap-1.5 text-xs"
+          >
+            <Link2 className="size-3.5" />
+            Inspect Link
           </Button>
 
           <Button
@@ -1168,6 +1220,151 @@ export default function KnowledgeGraphModule() {
           </div>
         )}
       </div>
+
+      {/* ─── Inspect Link Dialog ─────────────────────────────────────────────── */}
+      <Dialog open={showInspectDialog} onOpenChange={setShowInspectDialog}>
+        <DialogContent className="bg-[#0d1117] border-neutral-800 text-white max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-cyan-400 flex items-center gap-2">
+              <Link2 className="size-5" />
+              Inspect Link
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* URL Input */}
+            <div className="flex gap-2">
+              <Input
+                placeholder="Enter a URL to inspect (e.g., https://example.com)"
+                value={inspectUrl}
+                onChange={(e) => setInspectUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    handleInspectLink()
+                  }
+                }}
+                className="bg-neutral-900 border-neutral-700 text-white"
+              />
+              <Button
+                onClick={() => handleInspectLink()}
+                disabled={inspecting || !inspectUrl.trim()}
+                className="bg-cyan-600 hover:bg-cyan-700 text-white shrink-0"
+              >
+                {inspecting ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />}
+              </Button>
+            </div>
+
+            {/* Error */}
+            {inspectError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 text-xs text-red-400">
+                {inspectError}
+              </div>
+            )}
+
+            {/* Inspect Result */}
+            {inspectResult && (
+              <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4 space-y-3">
+                {/* Page Title */}
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shrink-0" />
+                  <span className="text-sm font-medium text-white truncate">{inspectResult.title}</span>
+                </div>
+
+                {/* URL */}
+                <p className="text-[10px] text-slate-500 break-all">{inspectResult.url}</p>
+
+                {/* Content Preview */}
+                {inspectResult.content && (
+                  <div>
+                    <p className="text-[10px] text-slate-500 mb-1">Extracted Content</p>
+                    <ScrollArea className="max-h-32">
+                      <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">
+                        {inspectResult.content.slice(0, 300)}{inspectResult.content.length > 300 ? '...' : ''}
+                      </p>
+                    </ScrollArea>
+                  </div>
+                )}
+
+                {/* Links Found */}
+                {inspectResult.links.length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-slate-500 mb-1.5">
+                      Links Found ({inspectResult.links.length})
+                    </p>
+                    <ScrollArea className="max-h-48">
+                      <div className="space-y-0.5">
+                        {inspectResult.links.map((link, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center gap-2 py-1 px-2 rounded hover:bg-neutral-800 transition-colors group"
+                          >
+                            <Link2 className="size-3 text-slate-500 shrink-0" />
+                            <span
+                              className="text-[10px] text-cyan-400 truncate flex-1 cursor-pointer hover:text-cyan-300"
+                              onClick={() => window.open(link, '_blank', 'noopener,noreferrer')}
+                              title={link}
+                            >
+                              {link.length > 60 ? link.slice(0, 60) + '...' : link}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 shrink-0 text-slate-500 hover:text-cyan-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => {
+                                setInspectUrl(link)
+                                handleInspectLink(link)
+                              }}
+                              disabled={inspecting}
+                              title="Inspect this link"
+                            >
+                              <Search className="size-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                )}
+
+                {inspectResult.links.length === 0 && (
+                  <p className="text-[10px] text-slate-500">No external links found on this page.</p>
+                )}
+
+                {/* Success indicator */}
+                <div className="flex items-center gap-2 text-[10px] text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  Page content added to knowledge graph as nodes
+                </div>
+              </div>
+            )}
+
+            {/* Loading State */}
+            {inspecting && !inspectResult && (
+              <div className="flex flex-col items-center justify-center py-8">
+                <Loader2 className="size-6 text-cyan-400 animate-spin mb-3" />
+                <p className="text-sm text-slate-400">Inspecting page content...</p>
+                <p className="text-[10px] text-slate-500 mt-1">Reading and extracting information from the URL</p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowInspectDialog(false)
+                setInspectResult(null)
+                setInspectUrl('')
+                setInspectError(null)
+              }}
+              className="border-neutral-700 text-slate-300"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── Query Dialog ──────────────────────────────────────────────────── */}
       <Dialog open={queryDialogOpen} onOpenChange={setQueryDialogOpen}>

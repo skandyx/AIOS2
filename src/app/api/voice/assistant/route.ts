@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { chatCompletion, type ChatMessage } from '@/lib/providers'
 import { pcmToWav, isPcmAudio, VALID_TTS_VOICE_IDS } from '@/lib/audio-utils'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
-import { writeFile, readFile, unlink } from 'fs/promises'
-import path from 'path'
-
-const execFileAsync = promisify(execFile)
 
 // System prompt for Fred - the AI voice assistant
 const FRED_SYSTEM_PROMPT = `You are Fred, an intelligent AI voice assistant inspired by Jarvis. You speak with confidence, clarity, and a touch of sophistication. You respond in the same language the user speaks (French or English). Keep your responses concise and conversational since they will be spoken aloud. Avoid markdown formatting, code blocks, or special characters. Speak naturally as if having a conversation. When addressed by name ("Fred"), acknowledge warmly and respond helpfully.`
@@ -169,42 +163,44 @@ export async function POST(request: NextRequest) {
 }
 
 // ── TTS Generation ──────────────────────────────────────────────────────
-// Priority: edge-tts CLI (high quality neural voices) → Z-AI SDK (fallback)
+// Priority: voice-service (edge-tts on port 3031) → Z-AI SDK (fallback)
+
+const VOICE_SERVICE_URL = 'http://localhost:3031/api/tts'
 
 async function generateTTSAudio(text: string, voice?: string): Promise<{ audioBase64: string | null; format: string | null }> {
   const isEdgeTTS = EDGE_TTS_VOICE_IDS.includes(voice)
 
-  // Try edge-tts CLI first for supported voices (much better quality)
+  // Try voice-service first for supported voices (high quality neural voices via edge-tts)
   if (isEdgeTTS || !voice) {
     try {
-      const edgeVoice = EDGE_VOICE_MAP[voice || 'ryan'] || 'en-GB-RyanNeural'
-      const tmpId = `tts_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      const tmpPath = `/tmp/${tmpId}.mp3`
-      
-      // Clean the text for shell safety
-      const safeText = text.replace(/"/g, '\\"').replace(/\n/g, ' ').slice(0, 500)
-      
-      // Use edge-tts CLI directly (Python must be available)
-      await execFileAsync('python3', [
-        '-m', 'edge_tts',
-        '-v', edgeVoice,
-        '-t', safeText,
-        '--rate=+0%',
-        '--pitch=-2Hz', // Slightly deeper for authoritative Jarvis sound
-        '--write-media', tmpPath,
-      ], { timeout: 15000 })
-      
-      // Read the generated file
-      const audioBuffer = await readFile(tmpPath)
-      
-      // Clean up
-      try { await unlink(tmpPath) } catch {}
-      
+      const edgeVoice = voice || 'ryan'
+      const safeText = text.replace(/\n/g, ' ').slice(0, 500)
+
+      const response = await fetch(VOICE_SERVICE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: safeText,
+          voice: edgeVoice,
+          rate: '+0%',
+          pitch: '-2Hz',
+        }),
+        signal: AbortSignal.timeout(15000),
+      })
+
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => '')
+        throw new Error(`voice-service returned ${response.status}: ${errBody.slice(0, 200)}`)
+      }
+
+      const audioBuffer = Buffer.from(await response.arrayBuffer())
+      const audioFormat = response.headers.get('X-Format') || 'mp3'
+
       const base64 = audioBuffer.toString('base64')
-      console.log(`[TTS] edge-tts generated ${audioBuffer.length} bytes (voice: ${edgeVoice})`)
-      return { audioBase64: base64, format: 'mp3' }
-    } catch (edgeErr) {
-      console.warn('[TTS] edge-tts failed, falling back to Z-AI:', edgeErr instanceof Error ? edgeErr.message : edgeErr)
+      console.log(`[TTS] voice-service generated ${audioBuffer.length} bytes (voice: ${edgeVoice}, format: ${audioFormat})`)
+      return { audioBase64: base64, format: audioFormat }
+    } catch (voiceServiceErr) {
+      console.warn('[TTS] voice-service failed, falling back to Z-AI:', voiceServiceErr instanceof Error ? voiceServiceErr.message : voiceServiceErr)
     }
   }
 

@@ -123,46 +123,102 @@ export default function TerminalModule() {
         break
 
       case 'status':
-        addLine('system', '┌── System Status ──────────────┐')
-        addLine('success', '│ ● Core Engine:     Online     │')
-        addLine('success', '│ ● Memory Store:    Active     │')
-        addLine('success', '│ ● Agent Pool:      6 Active   │')
-        addLine('output',  '│ ○ Ollama Local:    Standby    │')
-        addLine('success', '│ ● WebSocket:       Connected  │')
-        addLine('output',  '│ ○ GPU Usage:       12%        │')
-        addLine('output',  '│ ○ Memory Usage:    342 MB     │')
-        addLine('system', '└───────────────────────────────┘')
+        try {
+          const res = await fetch('/api/monitoring')
+          if (!res.ok) throw new Error(`API returned ${res.status}`)
+          const data = await res.json()
+          addLine('system', '┌── System Status ──────────────┐')
+          const cpuUsage = data.system?.cpu?.usage?.toFixed(1) ?? 'N/A'
+          const cpuStatus = data.system?.cpu?.status ?? 'unknown'
+          const ramUsage = data.system?.ram?.usage?.toFixed(1) ?? 'N/A'
+          const ramStatus = data.system?.ram?.status ?? 'unknown'
+          addLine(cpuStatus === 'good' ? 'success' : cpuStatus === 'warning' ? 'output' : 'error', `│ ● CPU Usage:       ${cpuUsage}%`.padEnd(33) + '│')
+          addLine(ramStatus === 'good' ? 'success' : ramStatus === 'warning' ? 'output' : 'error', `│ ● RAM Usage:       ${ramUsage}%`.padEnd(33) + '│')
+          addLine(data.agents?.active > 0 ? 'success' : 'output',            `│ ● Agent Pool:      ${data.agents?.active ?? 0} Active`.padEnd(33) + '│')
+          addLine('success', `│ ● Conversations:   ${data.conversations?.total ?? 0}`.padEnd(33) + '│')
+          addLine('success', `│ ● Memories:        ${data.memories?.total ?? 0}`.padEnd(33) + '│')
+          addLine(data.tasks?.failed > 0 ? 'error' : 'success', `│ ● Tasks:           ${data.tasks?.pending ?? 0} pending, ${data.tasks?.completed ?? 0} done`.padEnd(33) + '│')
+          addLine(data.plugins?.enabled > 0 ? 'success' : 'output', `│ ○ Plugins:         ${data.plugins?.enabled ?? 0} enabled`.padEnd(33) + '│')
+          addLine('system', '└───────────────────────────────┘')
+        } catch (err) {
+          addLine('error', `Failed to fetch status: ${err instanceof Error ? err.message : String(err)}`)
+        }
         break
 
       case 'agents':
-        addLine('system', '┌── Active Agents ──────────────┐')
-        addLine('success', '│ ● Coordinator   [idle]        │')
-        addLine('success', '│ ● Developer     [active]      │')
-        addLine('success', '│ ● Security      [monitoring]  │')
-        addLine('output',  '│ ○ Debugger      [standby]     │')
-        addLine('success', '│ ● Research      [active]      │')
-        addLine('output',  '│ ○ Memory Mgmt   [idle]        │')
-        addLine('system', '└───────────────────────────────┘')
+        try {
+          const res = await fetch('/api/agents')
+          if (!res.ok) throw new Error(`API returned ${res.status}`)
+          const data = await res.json()
+          const agents = Array.isArray(data) ? data : (data.agents || [])
+          addLine('system', '┌── Active Agents ──────────────┐')
+          if (agents.length === 0) {
+            addLine('output', '│   No agents found              │')
+          } else {
+            agents.slice(0, 10).forEach((a: any) => {
+              const status = a.isActive ? 'active' : (a.status || 'idle')
+              const marker = status === 'active' ? '●' : '○'
+              const name = (a.name || 'Unknown').padEnd(16).slice(0, 16)
+              const lineType = status === 'active' ? 'success' : 'output'
+              addLine(lineType, `│ ${marker} ${name} [${status}]`)
+            })
+          }
+          addLine('system', '└───────────────────────────────┘')
+        } catch (err) {
+          addLine('error', `Failed to fetch agents: ${err instanceof Error ? err.message : String(err)}`)
+        }
         break
 
       case 'tasks':
-        addLine('system', '┌── Current Tasks ──────────────┐')
-        addLine('output',  '│ #1  Code review       [67%]   │')
-        addLine('success', '│ #2  API integration   [done]  │')
-        addLine('output',  '│ #3  Data migration    [23%]   │')
-        addLine('error',   '│ #4  Deploy staging    [fail]  │')
-        addLine('output',  '│ #5  Security audit    [pend]  │')
-        addLine('system', '└───────────────────────────────┘')
+        try {
+          const res = await fetch('/api/tasks')
+          if (!res.ok) throw new Error(`API returned ${res.status}`)
+          const data = await res.json()
+          const tasks = Array.isArray(data) ? data : (data.tasks || [])
+          addLine('system', '┌── Current Tasks ──────────────┐')
+          if (tasks.length === 0) {
+            addLine('output', '│   No tasks found              │')
+          } else {
+            tasks.slice(0, 10).forEach((t: any, i: number) => {
+              const status = t.status || 'pending'
+              const title = (t.title || 'Untitled').padEnd(18).slice(0, 18)
+              const lineType = status === 'completed' ? 'success' : status === 'failed' ? 'error' : status === 'in_progress' ? 'output' : 'output'
+              const statusLabel = status === 'completed' ? 'done' : status === 'in_progress' ? `${t.progress ?? 0}%` : status.slice(0, 4)
+              addLine(lineType, `│ #${(i + 1).toString().padEnd(2)} ${title} [${statusLabel}]`)
+            })
+          }
+          addLine('system', '└───────────────────────────────┘')
+        } catch (err) {
+          addLine('error', `Failed to fetch tasks: ${err instanceof Error ? err.message : String(err)}`)
+        }
         break
 
       case 'memory':
-        addLine('system', '┌── Memory Store ───────────────┐')
-        addLine('output',  '│ Short-term:    24 entries      │')
-        addLine('output',  '│ Long-term:     156 entries     │')
-        addLine('output',  '│ Contextual:    8 entries       │')
-        addLine('output',  '│ Procedural:    42 entries      │')
-        addLine('output',  '│ Total size:    12.4 MB        │')
-        addLine('system', '└───────────────────────────────┘')
+        try {
+          const res = await fetch('/api/memory')
+          if (!res.ok) throw new Error(`API returned ${res.status}`)
+          const data = await res.json()
+          const memories = Array.isArray(data) ? data : (data.memories || [])
+          addLine('system', '┌── Memory Store ───────────────┐')
+          if (memories.length === 0) {
+            addLine('output', '│   No memories found           │')
+          } else {
+            // Group by type
+            const byType: Record<string, number> = {}
+            memories.forEach((m: any) => {
+              const t = m.type || 'unknown'
+              byType[t] = (byType[t] || 0) + 1
+            })
+            Object.entries(byType).forEach(([type, count]) => {
+              const label = type.padEnd(14).slice(0, 14)
+              addLine('output', `│ ${label} ${count} entries`.padEnd(33) + '│')
+            })
+            addLine('output', `│ Total:          ${memories.length} entries`.padEnd(33) + '│')
+          }
+          addLine('system', '└───────────────────────────────┘')
+        } catch (err) {
+          addLine('error', `Failed to fetch memories: ${err instanceof Error ? err.message : String(err)}`)
+        }
         break
 
       case 'clear':
@@ -186,8 +242,19 @@ export default function TerminalModule() {
           addLine('error', 'Error: Missing message. Usage: chat <message>')
         } else {
           addLine('system', `Sending to AI: "${args}"`)
-          await new Promise(r => setTimeout(r, 800))
-          addLine('success', 'AI: I received your message and I\'m processing it. The system is currently operating within normal parameters.')
+          try {
+            const res = await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: args }),
+            })
+            if (!res.ok) throw new Error(`API returned ${res.status}`)
+            const data = await res.json()
+            const aiMessage = data.response?.content || data.response?.message || data.message || 'No response'
+            addLine('success', `AI: ${aiMessage}`)
+          } catch (err) {
+            addLine('error', `Failed to reach AI: ${err instanceof Error ? err.message : String(err)}`)
+          }
         }
         break
 

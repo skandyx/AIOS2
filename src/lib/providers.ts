@@ -14,7 +14,7 @@
 
 // ─── Provider Types ────────────────────────────────────────────────────────
 
-export type ProviderId = 'zai' | 'mistral' | 'openai' | 'anthropic' | 'google' | 'deepseek' | 'ollama'
+export type ProviderId = 'zai' | 'mistral' | 'openai' | 'anthropic' | 'google' | 'deepseek' | 'ollama' | 'grok' | 'openrouter'
 
 export interface ProviderConfig {
   id: ProviderId
@@ -105,6 +105,19 @@ const MODEL_PROVIDER_MAP: Record<string, ProviderId> = {
   'ollama-mistral': 'ollama',
   'ollama-llama3.1': 'ollama',
   'ollama-codellama': 'ollama',
+  // Grok (xAI) models
+  'grok-3': 'grok',
+  'grok-3-mini': 'grok',
+  'grok-2': 'grok',
+  'grok-2-mini': 'grok',
+  // OpenRouter models (prefixed)
+  'openrouter-auto': 'openrouter',
+  'openrouter-claude-3.5-sonnet': 'openrouter',
+  'openrouter-gpt-4o': 'openrouter',
+  'openrouter-gemini-pro': 'openrouter',
+  'openrouter-deepseek-chat': 'openrouter',
+  'openrouter-grok-2': 'openrouter',
+  'openrouter-llama-3.1': 'openrouter',
 }
 
 // Prefixes that identify a provider for model IDs not in the map
@@ -120,6 +133,8 @@ const MODEL_PREFIX_MAP: [string, ProviderId][] = [
   ['gemini-', 'google'],
   ['deepseek-', 'deepseek'],
   ['ollama-', 'ollama'],
+  ['grok-', 'grok'],
+  ['openrouter-', 'openrouter'],
 ]
 
 // ─── Z-AI Config Detection ──────────────────────────────────────────────────
@@ -165,6 +180,8 @@ function getBestAvailableProvider(): ProviderId {
   if (process.env.ANTHROPIC_API_KEY) return 'anthropic'
   if (process.env.GOOGLE_API_KEY) return 'google'
   if (process.env.DEEPSEEK_API_KEY) return 'deepseek'
+  if (process.env.XAI_API_KEY) return 'grok'
+  if (process.env.OPENROUTER_API_KEY) return 'openrouter'
   return 'ollama'
 }
 
@@ -260,6 +277,35 @@ export function getProviders(): ProviderConfig[] {
         { id: 'ollama-codellama', name: 'CodeLlama (Ollama)', providerId: 'ollama', providerName: 'Ollama', capabilities: ['code'], contextWindow: '16K', maxTokens: 4096 },
       ],
       isAvailable: false, // Will be checked at runtime
+    },
+    {
+      id: 'grok',
+      name: 'Grok (xAI)',
+      envKey: 'XAI_API_KEY',
+      baseUrl: 'https://api.x.ai/v1',
+      models: [
+        { id: 'grok-3', name: 'Grok 3', providerId: 'grok', providerName: 'Grok (xAI)', capabilities: ['chat', 'code', 'reasoning'], contextWindow: '131K', maxTokens: 8192 },
+        { id: 'grok-3-mini', name: 'Grok 3 Mini', providerId: 'grok', providerName: 'Grok (xAI)', capabilities: ['chat', 'code'], contextWindow: '131K', maxTokens: 8192 },
+        { id: 'grok-2', name: 'Grok 2', providerId: 'grok', providerName: 'Grok (xAI)', capabilities: ['chat', 'code', 'reasoning', 'vision'], contextWindow: '131K', maxTokens: 4096 },
+        { id: 'grok-2-mini', name: 'Grok 2 Mini', providerId: 'grok', providerName: 'Grok (xAI)', capabilities: ['chat', 'code'], contextWindow: '131K', maxTokens: 4096 },
+      ],
+      isAvailable: !!process.env.XAI_API_KEY,
+    },
+    {
+      id: 'openrouter',
+      name: 'OpenRouter',
+      envKey: 'OPENROUTER_API_KEY',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      models: [
+        { id: 'openrouter-auto', name: 'Auto (Cheapest)', providerId: 'openrouter', providerName: 'OpenRouter', capabilities: ['chat', 'code', 'reasoning'], contextWindow: 'Varies', maxTokens: 4096 },
+        { id: 'openrouter-claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', providerId: 'openrouter', providerName: 'OpenRouter', capabilities: ['chat', 'code', 'reasoning'], contextWindow: '200K', maxTokens: 4096 },
+        { id: 'openrouter-gpt-4o', name: 'GPT-4o', providerId: 'openrouter', providerName: 'OpenRouter', capabilities: ['chat', 'code', 'reasoning', 'vision'], contextWindow: '128K', maxTokens: 4096 },
+        { id: 'openrouter-gemini-pro', name: 'Gemini Pro', providerId: 'openrouter', providerName: 'OpenRouter', capabilities: ['chat', 'code', 'reasoning', 'vision'], contextWindow: '128K', maxTokens: 4096 },
+        { id: 'openrouter-deepseek-chat', name: 'DeepSeek V3', providerId: 'openrouter', providerName: 'OpenRouter', capabilities: ['chat', 'code', 'reasoning'], contextWindow: '64K', maxTokens: 4096 },
+        { id: 'openrouter-grok-2', name: 'Grok 2', providerId: 'openrouter', providerName: 'OpenRouter', capabilities: ['chat', 'code', 'reasoning'], contextWindow: '131K', maxTokens: 4096 },
+        { id: 'openrouter-llama-3.1', name: 'Llama 3.1 70B', providerId: 'openrouter', providerName: 'OpenRouter', capabilities: ['chat', 'code', 'reasoning'], contextWindow: '128K', maxTokens: 4096 },
+      ],
+      isAvailable: !!process.env.OPENROUTER_API_KEY,
     },
   ]
 }
@@ -495,6 +541,102 @@ async function ollamaChatCompletion(req: ChatCompletionRequest): Promise<ChatCom
   }
 }
 
+// ─── Chat Completion via Grok (xAI) API ─────────────────────────────────────
+
+async function grokChatCompletion(req: ChatCompletionRequest): Promise<ChatCompletionResponse> {
+  const apiKey = process.env.XAI_API_KEY
+  if (!apiKey) throw new Error('XAI_API_KEY is not configured')
+
+  // Map openrouter-prefixed model IDs to actual xAI model names
+  const modelId = req.model || 'grok-3'
+  const xaiModel = modelId.replace(/^grok-/, 'grok-') // already correct format
+
+  const response = await fetch('https://api.x.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: xaiModel,
+      messages: req.messages,
+      temperature: req.temperature ?? 0.7,
+      max_tokens: req.maxTokens ?? 4096,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Grok (xAI) API error: ${response.status} - ${error}`)
+  }
+
+  const data = await response.json()
+  return {
+    content: data.choices[0]?.message?.content || '',
+    model: data.model || xaiModel,
+    provider: 'grok',
+    usage: data.usage ? {
+      promptTokens: data.usage.prompt_tokens,
+      completionTokens: data.usage.completion_tokens,
+      totalTokens: data.usage.total_tokens,
+    } : undefined,
+  }
+}
+
+// ─── Chat Completion via OpenRouter API ──────────────────────────────────────
+
+async function openrouterChatCompletion(req: ChatCompletionRequest): Promise<ChatCompletionResponse> {
+  const apiKey = process.env.OPENROUTER_API_KEY
+  if (!apiKey) throw new Error('OPENROUTER_API_KEY is not configured')
+
+  // Map openrouter-prefixed model IDs to actual provider model names
+  const openrouterModelMap: Record<string, string> = {
+    'openrouter-auto': 'openrouter/auto',
+    'openrouter-claude-3.5-sonnet': 'anthropic/claude-3.5-sonnet',
+    'openrouter-gpt-4o': 'openai/gpt-4o',
+    'openrouter-gemini-pro': 'google/gemini-pro',
+    'openrouter-deepseek-chat': 'deepseek/deepseek-chat',
+    'openrouter-grok-2': 'x-ai/grok-2',
+    'openrouter-llama-3.1': 'meta-llama/llama-3.1-70b-instruct',
+  }
+
+  const modelId = req.model || 'openrouter-auto'
+  const actualModel = openrouterModelMap[modelId] || modelId.replace(/^openrouter-/, '')
+
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://aios.app',
+      'X-Title': 'AIOS - AI Operating System',
+    },
+    body: JSON.stringify({
+      model: actualModel,
+      messages: req.messages,
+      temperature: req.temperature ?? 0.7,
+      max_tokens: req.maxTokens ?? 4096,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`OpenRouter API error: ${response.status} - ${error}`)
+  }
+
+  const data = await response.json()
+  return {
+    content: data.choices[0]?.message?.content || '',
+    model: data.model || actualModel,
+    provider: 'openrouter',
+    usage: data.usage ? {
+      promptTokens: data.usage.prompt_tokens,
+      completionTokens: data.usage.completion_tokens,
+      totalTokens: data.usage.total_tokens,
+    } : undefined,
+  }
+}
+
 // ─── Chat Completion via z-ai-web-dev-sdk (Default) ────────────────────────
 
 async function zaiChatCompletion(req: ChatCompletionRequest): Promise<ChatCompletionResponse> {
@@ -587,6 +729,10 @@ export async function chatCompletion(req: ChatCompletionRequest): Promise<ChatCo
       return deepseekChatCompletion(req)
     case 'ollama':
       return ollamaChatCompletion(req)
+    case 'grok':
+      return grokChatCompletion(req)
+    case 'openrouter':
+      return openrouterChatCompletion(req)
     case 'zai':
     default:
       return zaiChatCompletion(req)
@@ -623,6 +769,14 @@ export function getConfiguredKeysStatus(): Record<string, { configured: boolean;
     DEEPSEEK_API_KEY: {
       configured: !!process.env.DEEPSEEK_API_KEY,
       masked: process.env.DEEPSEEK_API_KEY ? maskApiKey(process.env.DEEPSEEK_API_KEY) : '',
+    },
+    XAI_API_KEY: {
+      configured: !!process.env.XAI_API_KEY,
+      masked: process.env.XAI_API_KEY ? maskApiKey(process.env.XAI_API_KEY) : '',
+    },
+    OPENROUTER_API_KEY: {
+      configured: !!process.env.OPENROUTER_API_KEY,
+      masked: process.env.OPENROUTER_API_KEY ? maskApiKey(process.env.OPENROUTER_API_KEY) : '',
     },
     OLLAMA_BASE_URL: {
       configured: !!process.env.OLLAMA_BASE_URL,

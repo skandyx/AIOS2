@@ -609,6 +609,7 @@ function CreateProjectDialog({ open, onOpenChange, onCreated }: {
   const [notes, setNotes] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
   const [sourceGithubUrl, setSourceGithubUrl] = useState('')
   const [sourceGithubToken, setSourceGithubToken] = useState('')
   const [sourceLocalPath, setSourceLocalPath] = useState('')
@@ -617,16 +618,18 @@ function CreateProjectDialog({ open, onOpenChange, onCreated }: {
     setName(''); setDescription(''); setCategory('Web App'); setPriority('medium')
     setIcon('📁'); setTechStack(''); setRequirements(''); setNotes(''); setDueDate('')
     setSourceGithubUrl(''); setSourceGithubToken(''); setSourceLocalPath('')
+    setCreateError('')
   }
 
   const handleCreate = async () => {
     if (!name.trim()) return
     setCreating(true)
+    setCreateError('')
     try {
       const body: Record<string, unknown> = {
         name: name.trim(), description: description.trim() || undefined, status: 'planning',
         priority, category, icon,
-        techStack: techStack.trim() ? JSON.stringify(techStack.split(',').map(s => s.trim()).filter(Boolean)) : undefined,
+        techStack: techStack.trim() ? techStack.split(',').map(s => s.trim()).filter(Boolean) : undefined,
         requirements: requirements.trim() || undefined, notes: notes.trim() || undefined, dueDate: dueDate || undefined,
         localPath: sourceLocalPath.trim() || undefined,
       }
@@ -655,8 +658,17 @@ function CreateProjectDialog({ open, onOpenChange, onCreated }: {
             // GitHub connection may fail, that's fine
           }
         }
+      } else {
+        let errorMsg = 'Failed to create project. Please try again.'
+        try {
+          const errBody = await res.json()
+          if (errBody.error) errorMsg = errBody.error
+        } catch { /* ignore parse error */ }
+        setCreateError(errorMsg)
       }
-    } catch { /* silently fail */ } finally { setCreating(false) }
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Network error. Please check your connection.')
+    } finally { setCreating(false) }
   }
 
   return (
@@ -739,10 +751,16 @@ function CreateProjectDialog({ open, onOpenChange, onCreated }: {
             </div>
           </div>
         </div>
+        {createError && (
+          <div className="flex items-center gap-2 p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+            <AlertCircle className="size-4 shrink-0" />
+            <span>{createError}</span>
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => { resetForm(); onOpenChange(false) }} className="border-neutral-700 text-slate-300">Cancel</Button>
           <Button onClick={handleCreate} disabled={creating || !name.trim()} className="bg-rose-600 hover:bg-rose-700 text-white">
-            {creating ? 'Creating...' : 'Create Project'}
+            {creating ? <><Loader2 className="size-4 animate-spin mr-2" />Creating...</> : 'Create Project'}
           </Button>
         </DialogFooter>
       </DialogContent>

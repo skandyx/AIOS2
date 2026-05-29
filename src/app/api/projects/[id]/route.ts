@@ -1,6 +1,71 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+// ─── Category Mapping ─────────────────────────────────────────────────────────
+
+const CATEGORY_DISPLAY_TO_SCHEMA: Record<string, string> = {
+  'Web App': 'web_app',
+  'API': 'api',
+  'Automation': 'automation',
+  'Mobile': 'mobile',
+  'Desktop': 'desktop',
+  'Data': 'data',
+  'AI': 'ai',
+  'Other': 'other',
+  'web_app': 'web_app',
+  'api': 'api',
+  'automation': 'automation',
+  'mobile': 'mobile',
+  'desktop': 'desktop',
+  'data': 'data',
+  'ai': 'ai',
+  'other': 'other',
+}
+
+const CATEGORY_SCHEMA_TO_DISPLAY: Record<string, string> = {
+  'web_app': 'Web App',
+  'api': 'API',
+  'automation': 'Automation',
+  'mobile': 'Mobile',
+  'desktop': 'Desktop',
+  'data': 'Data',
+  'ai': 'AI',
+  'other': 'Other',
+}
+
+function normalizeCategory(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'string') return null
+  return CATEGORY_DISPLAY_TO_SCHEMA[raw] ?? raw.toLowerCase().replace(/\s+/g, '_')
+}
+
+function categoryToDisplay(schemaValue: string | null | undefined): string | null {
+  if (!schemaValue) return null
+  return CATEGORY_SCHEMA_TO_DISPLAY[schemaValue] ?? schemaValue
+}
+
+/**
+ * Safely normalize a JSON-able field (techStack, tags) for storage.
+ * Accepts strings (JSON or comma-separated) or arrays.
+ */
+function normalizeJsonArray(raw: unknown): string | null {
+  if (!raw) return null
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed) return null
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) return trimmed
+    } catch {
+      return JSON.stringify(trimmed.split(',').map(s => s.trim()).filter(Boolean))
+    }
+    return trimmed
+  }
+  if (Array.isArray(raw)) {
+    return JSON.stringify(raw)
+  }
+  return null
+}
+
 // Map DB task status to frontend status
 function mapTaskStatus(status: string): string {
   switch (status) {
@@ -85,6 +150,7 @@ export async function GET(
     // Map task statuses from DB format to frontend format
     const mappedProject = {
       ...project,
+      category: categoryToDisplay(project.category),
       tasks: project.tasks.map(task => ({
         ...task,
         status: mapTaskStatus(task.status),
@@ -135,12 +201,12 @@ export async function PATCH(
       }
     }
     if (body.priority !== undefined) updateData.priority = body.priority
-    if (body.category !== undefined) updateData.category = body.category
+    if (body.category !== undefined) updateData.category = normalizeCategory(body.category)
     if (body.icon !== undefined) updateData.icon = body.icon
-    if (body.techStack !== undefined) updateData.techStack = JSON.stringify(body.techStack)
+    if (body.techStack !== undefined) updateData.techStack = normalizeJsonArray(body.techStack)
     if (body.requirements !== undefined) updateData.requirements = body.requirements
     if (body.notes !== undefined) updateData.notes = body.notes
-    if (body.tags !== undefined) updateData.tags = JSON.stringify(body.tags)
+    if (body.tags !== undefined) updateData.tags = normalizeJsonArray(body.tags)
     if (body.dueDate !== undefined) updateData.dueDate = body.dueDate ? new Date(body.dueDate) : null
 
     const updated = await db.project.update({
@@ -157,7 +223,13 @@ export async function PATCH(
       },
     })
 
-    return NextResponse.json(updated)
+    // Map category back to display format for the frontend
+    const responseProject = {
+      ...updated,
+      category: categoryToDisplay(updated.category),
+    }
+
+    return NextResponse.json(responseProject)
   } catch (error) {
     console.error('Update project error:', error)
     return NextResponse.json(

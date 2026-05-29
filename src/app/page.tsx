@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, ComponentType } from 'react';
-import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import { io } from 'socket.io-client';
 import {
@@ -30,33 +29,113 @@ import {
 } from '@/components/ui/dialog';
 import { useAIOSStore, type AIModule } from '@/lib/store';
 
-// Module imports — Dashboard loaded eagerly, others lazy-loaded via dynamic()
-import DashboardModule from '@/components/modules/DashboardModule';
+// Module imports — ALL modules are lazy-loaded ON DEMAND
+// This prevents the server from trying to compile all modules at once (which causes OOM)
+// Using a function-based loader map to prevent static analysis by bundler
+function getModuleLoader(moduleId: string): (() => Promise<{ default: ComponentType }>) | null {
+  const loaders: Record<string, () => Promise<{ default: ComponentType }>> = {
+    dashboard: () => import(/* webpackChunkName: "dashboard" */ '@/components/modules/DashboardModule'),
+    chat: () => import(/* webpackChunkName: "chat" */ '@/components/modules/ChatModule'),
+    voice: () => import(/* webpackChunkName: "voice" */ '@/components/modules/VoiceModule'),
+    agents: () => import(/* webpackChunkName: "agents" */ '@/components/modules/AgentsModule'),
+    memory: () => import(/* webpackChunkName: "memory" */ '@/components/modules/MemoryModule'),
+    workflows: () => import(/* webpackChunkName: "workflows" */ '@/components/modules/WorkflowsModule'),
+    monitoring: () => import(/* webpackChunkName: "monitoring" */ '@/components/modules/MonitoringModule'),
+    plugins: () => import(/* webpackChunkName: "plugins" */ '@/components/modules/PluginsModule'),
+    models: () => import(/* webpackChunkName: "models" */ '@/components/modules/ModelsModule'),
+    terminal: () => import(/* webpackChunkName: "terminal" */ '@/components/modules/TerminalModule'),
+    security: () => import(/* webpackChunkName: "security" */ '@/components/modules/SecurityModule'),
+    integrations: () => import(/* webpackChunkName: "integrations" */ '@/components/modules/IntegrationsModule'),
+    skills: () => import(/* webpackChunkName: "skills" */ '@/components/modules/SkillsModule'),
+    mcp: () => import(/* webpackChunkName: "mcp" */ '@/components/modules/MCPModule'),
+    projects: () => import(/* webpackChunkName: "projects" */ '@/components/modules/ProjectsModule'),
+    'knowledge-graph': () => import(/* webpackChunkName: "knowledge-graph" */ '@/components/modules/KnowledgeGraphModule'),
+  };
+  return loaders[moduleId] || null;
+}
 
-const loadingFallback = () => (
-  <div className="flex items-center justify-center h-full">
-    <div className="text-center">
-      <Loader2 className="h-8 w-8 text-cyan-400 animate-spin mx-auto mb-3" />
-      <p className="text-sm text-muted-foreground">Loading module...</p>
-    </div>
-  </div>
-);
+// Cache for loaded module components
+const moduleCache: Record<string, ComponentType> = {};
 
-const ChatModule = dynamic(() => import('@/components/modules/ChatModule'), { loading: loadingFallback, ssr: false });
-const VoiceModule = dynamic(() => import('@/components/modules/VoiceModule'), { loading: loadingFallback, ssr: false });
-const AgentsModule = dynamic(() => import('@/components/modules/AgentsModule'), { loading: loadingFallback, ssr: false });
-const MemoryModule = dynamic(() => import('@/components/modules/MemoryModule'), { loading: loadingFallback, ssr: false });
-const WorkflowsModule = dynamic(() => import('@/components/modules/WorkflowsModule'), { loading: loadingFallback, ssr: false });
-const MonitoringModule = dynamic(() => import('@/components/modules/MonitoringModule'), { loading: loadingFallback, ssr: false });
-const PluginsModule = dynamic(() => import('@/components/modules/PluginsModule'), { loading: loadingFallback, ssr: false });
-const ModelsModule = dynamic(() => import('@/components/modules/ModelsModule'), { loading: loadingFallback, ssr: false });
-const TerminalModule = dynamic(() => import('@/components/modules/TerminalModule'), { loading: loadingFallback, ssr: false });
-const SecurityModule = dynamic(() => import('@/components/modules/SecurityModule'), { loading: loadingFallback, ssr: false });
-const IntegrationsModule = dynamic(() => import('@/components/modules/IntegrationsModule'), { loading: loadingFallback, ssr: false });
-const SkillsModule = dynamic(() => import('@/components/modules/SkillsModule'), { loading: loadingFallback, ssr: false });
-const MCPModule = dynamic(() => import('@/components/modules/MCPModule'), { loading: loadingFallback, ssr: false });
-const ProjectsModule = dynamic(() => import('@/components/modules/ProjectsModule'), { loading: loadingFallback, ssr: false });
-const KnowledgeGraphModule = dynamic(() => import('@/components/modules/KnowledgeGraphModule'), { loading: loadingFallback, ssr: false });
+function LazyModuleLoader({ moduleId }: { moduleId: AIModule }) {
+  const [state, setState] = useState<{
+    Component: ComponentType | null;
+    error: Error | null;
+  }>(() => {
+    const cached = moduleCache[moduleId];
+    return { Component: cached || null, error: null };
+  });
+
+  useEffect(() => {
+    // If already cached, nothing to do
+    if (moduleCache[moduleId]) {
+      return;
+    }
+
+    const loader = getModuleLoader(moduleId);
+    if (!loader) {
+      // Schedule the error state update asynchronously to avoid cascading renders
+      queueMicrotask(() => {
+        setState({ Component: null, error: new Error(`Unknown module: ${moduleId}`) });
+      });
+      return;
+    }
+
+    let cancelled = false;
+    loader()
+      .then((mod) => {
+        if (!cancelled) {
+          const Comp = mod.default;
+          moduleCache[moduleId] = Comp;
+          setState({ Component: Comp, error: null });
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error(`Failed to load module ${moduleId}:`, err);
+          setState({ Component: null, error: err instanceof Error ? err : new Error(String(err)) });
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [moduleId]);
+
+  const { Component, error } = state;
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full p-8">
+        <div className="text-center max-w-md">
+          <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-200 mb-2">Module Error</h3>
+          <p className="text-sm text-gray-400 mb-4">
+            {moduleId} module failed to load: {error.message}
+          </p>
+          <Button
+            onClick={() => { setState({ Component: null, error: null }); delete moduleCache[moduleId]; }}
+            variant="outline"
+            className="border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
+          >
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!Component) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 text-cyan-400 animate-spin mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">Loading module...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <Component />;
+}
 
 // ─── Navigation Config ──────────────────────────────────────────────────────────
 
@@ -87,68 +166,7 @@ const navItems: NavItem[] = [
   { id: 'knowledge-graph', label: 'Knowledge Graph', icon: Network, color: 'text-cyan-400', shortcut: '=' },
 ];
 
-// ─── Module Render Map ──────────────────────────────────────────────────────────
-
-const moduleComponents: Record<AIModule, ComponentType> = {
-  dashboard: DashboardModule,
-  chat: ChatModule,
-  voice: VoiceModule,
-  agents: AgentsModule,
-  memory: MemoryModule,
-  workflows: WorkflowsModule,
-  monitoring: MonitoringModule,
-  skills: SkillsModule,
-  mcp: MCPModule,
-  projects: ProjectsModule,
-  plugins: PluginsModule,
-  models: ModelsModule,
-  terminal: TerminalModule,
-  security: SecurityModule,
-  integrations: IntegrationsModule,
-  'knowledge-graph': KnowledgeGraphModule,
-};
-
-// ─── Error Boundary ────────────────────────────────────────────────────────────
-
-class ModuleErrorBoundary extends React.Component<
-  { children: React.ReactNode; name: string },
-  { hasError: boolean; error: Error | null }
-> {
-  constructor(props: { children: React.ReactNode; name: string }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="flex items-center justify-center h-full p-8">
-          <div className="text-center max-w-md">
-            <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-200 mb-2">
-              Module Error
-            </h3>
-            <p className="text-sm text-gray-400 mb-4">
-              {this.props.name} module encountered an error: {this.state.error?.message}
-            </p>
-            <Button
-              onClick={() => this.setState({ hasError: false, error: null })}
-              variant="outline"
-              className="border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
-            >
-              Try Again
-            </Button>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
+// ─── Active Module Component ────────────────────────────────────────────
 
 // ─── Main Page Component ────────────────────────────────────────────────────────
 
@@ -225,7 +243,20 @@ export default function AIOSDashboard() {
       });
 
       socketInstance.on('system:metrics', (data: any) => {
-        setSystemMetrics(data);
+        // Map nested API response to flat SystemMetrics interface
+        setSystemMetrics({
+          totalConversations: data.conversations?.total ?? data.totalConversations ?? 0,
+          totalMessages: data.messages?.total ?? data.totalMessages ?? 0,
+          totalMemories: data.memories?.total ?? data.totalMemories ?? 0,
+          activeAgents: data.agents?.active ?? data.activeAgents ?? 0,
+          pendingTasks: data.tasks?.pending ?? data.pendingTasks ?? 0,
+          activeWorkflows: data.workflows?.active ?? data.activeWorkflows ?? 0,
+          installedPlugins: data.plugins?.enabled ?? data.installedPlugins ?? 0,
+          connectedIntegrations: data.integrations?.connected ?? data.connectedIntegrations ?? 0,
+          uptime: data.system?.uptime ?? data.uptime,
+          memoryUsage: data.system?.ram?.usage ?? data.memoryUsage,
+          cpuUsage: data.system?.cpu?.usage ?? data.cpuUsage,
+        });
       });
 
       socketInstance.on('notification', (data: any) => {
@@ -255,7 +286,20 @@ export default function AIOSDashboard() {
         const res = await fetch('/api/monitoring');
         if (res.ok) {
           const data = await res.json();
-          setSystemMetrics(data);
+          // Map nested API response to flat SystemMetrics interface
+          setSystemMetrics({
+            totalConversations: data.conversations?.total ?? 0,
+            totalMessages: data.messages?.total ?? 0,
+            totalMemories: data.memories?.total ?? 0,
+            activeAgents: data.agents?.active ?? 0,
+            pendingTasks: data.tasks?.pending ?? 0,
+            activeWorkflows: data.workflows?.active ?? 0,
+            installedPlugins: data.plugins?.enabled ?? 0,
+            connectedIntegrations: data.integrations?.connected ?? 0,
+            uptime: data.system?.uptime,
+            memoryUsage: data.system?.ram?.usage,
+            cpuUsage: data.system?.cpu?.usage,
+          });
         }
       } catch {
         // Silently fail - metrics will show zeros
@@ -346,9 +390,6 @@ export default function AIOSDashboard() {
   const filteredCommands = commandActions.filter(cmd =>
     cmd.label.toLowerCase().includes(commandSearch.toLowerCase())
   );
-
-  // ─── Active Module Component ────────────────────────────────────────────
-  const ActiveModuleComponent = moduleComponents[activeModule];
 
   // ─── Unread Notifications ──────────────────────────────────────────────
   const unreadNotifications = notifications.filter(n => !n.dismissed);
@@ -681,9 +722,7 @@ export default function AIOSDashboard() {
                 transition={{ duration: 0.2, ease: 'easeOut' }}
                 className="h-full"
               >
-                <ModuleErrorBoundary name={activeModule}>
-                  <ActiveModuleComponent />
-                </ModuleErrorBoundary>
+                <LazyModuleLoader moduleId={activeModule} />
               </motion.div>
             </AnimatePresence>
           </main>

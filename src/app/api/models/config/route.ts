@@ -111,6 +111,30 @@ export async function POST(request: NextRequest) {
         }
         break
       }
+      case 'grok': {
+        try {
+          const res = await fetch('https://api.x.ai/v1/models', {
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+          })
+          isValid = res.ok
+          if (!isValid) errorMessage = `Grok (xAI) API returned ${res.status}`
+        } catch {
+          errorMessage = 'Failed to connect to Grok (xAI) API'
+        }
+        break
+      }
+      case 'openrouter': {
+        try {
+          const res = await fetch('https://openrouter.ai/api/v1/models', {
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+          })
+          isValid = res.ok
+          if (!isValid) errorMessage = `OpenRouter API returned ${res.status}`
+        } catch {
+          errorMessage = 'Failed to connect to OpenRouter API'
+        }
+        break
+      }
       default: {
         errorMessage = `Validation not supported for provider: ${provider}`
       }
