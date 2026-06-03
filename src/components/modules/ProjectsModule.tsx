@@ -755,7 +755,7 @@ export default function ProjectsModule() {
                 </Select>
                 <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-500" onClick={() => selectedProjectId && fetchProject(selectedProjectId)}><RefreshCw className="size-3" /></Button>
               </div>
-              <ScrollArea className="flex-1 p-3">
+              <ScrollArea className="flex-1 p-3 overflow-y-auto max-h-[calc(100vh-280px)]">
                 <div className="space-y-2 max-w-3xl mx-auto">
                   {filteredMessages.length === 0 && <div className="text-center py-10 text-slate-500 text-xs">No messages yet. Start orchestration to see agent conversations.</div>}
                   {filteredMessages.map(msg => {
@@ -776,9 +776,37 @@ export default function ProjectsModule() {
                           <p className="text-xs text-slate-300 whitespace-pre-wrap break-words">{msg.content}</p>
                           {/* Human oversight buttons */}
                           <div className="flex items-center gap-1 mt-2">
-                            <Button variant="ghost" size="sm" className="h-5 text-[9px] gap-1 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 px-1.5" onClick={() => { /* approve */ }}><ThumbsUp className="size-2.5" /> Approve</Button>
-                            <Button variant="ghost" size="sm" className="h-5 text-[9px] gap-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 px-1.5" onClick={() => { /* reject */ }}><ThumbsDown className="size-2.5" /> Reject</Button>
-                            <Button variant="ghost" size="sm" className="h-5 text-[9px] gap-1 text-sky-500 hover:text-sky-400 hover:bg-sky-500/10 px-1.5" onClick={() => { /* override */ }}><Edit3 className="size-2.5" /> Override</Button>
+                            <Button variant="ghost" size="sm" className="h-5 text-[9px] gap-1 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 px-1.5" onClick={async () => {
+                              // Approve: mark related pending tasks as in_progress
+                              const relatedTasks = tasks.filter(t => t.assigneeId === msg.fromAgentId && t.status === 'pending')
+                              for (const t of relatedTasks) {
+                                await fetch(`/api/tasks/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'in_progress' }) })
+                              }
+                              if (relatedTasks.length === 0 && selectedProjectId) {
+                                // If no specific task, send approval message
+                                await fetch(`/api/projects/${selectedProjectId}/agents/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: '✅ Approved. Proceed with execution.', fromRole: 'user', toRole: msg.fromAgentId || 'all', type: 'instruction' }) })
+                              }
+                              if (selectedProjectId) fetchProject(selectedProjectId)
+                            }}><ThumbsUp className="size-2.5" /> Approve</Button>
+                            <Button variant="ghost" size="sm" className="h-5 text-[9px] gap-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 px-1.5" onClick={async () => {
+                              // Reject: mark related in_progress tasks as failed
+                              const relatedTasks = tasks.filter(t => t.assigneeId === msg.fromAgentId && (t.status === 'in_progress' || t.status === 'pending'))
+                              for (const t of relatedTasks) {
+                                await fetch(`/api/tasks/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'failed', error: 'Rejected by user' }) })
+                              }
+                              if (relatedTasks.length === 0 && selectedProjectId) {
+                                await fetch(`/api/projects/${selectedProjectId}/agents/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: '❌ Rejected. Please stop and revise your approach.', fromRole: 'user', toRole: msg.fromAgentId || 'all', type: 'instruction' }) })
+                              }
+                              if (selectedProjectId) fetchProject(selectedProjectId)
+                            }}><ThumbsDown className="size-2.5" /> Reject</Button>
+                            <Button variant="ghost" size="sm" className="h-5 text-[9px] gap-1 text-sky-500 hover:text-sky-400 hover:bg-sky-500/10 px-1.5" onClick={async () => {
+                              // Override: send override instruction
+                              const overrideMsg = prompt('Enter override instruction:')
+                              if (overrideMsg && selectedProjectId) {
+                                await fetch(`/api/projects/${selectedProjectId}/agents/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: `🔄 Override: ${overrideMsg}`, fromRole: 'user', toRole: msg.fromAgentId || 'all', type: 'instruction' }) })
+                                fetchProject(selectedProjectId)
+                              }
+                            }}><Edit3 className="size-2.5" /> Override</Button>
                           </div>
                         </div>
                       </motion.div>
@@ -1240,9 +1268,31 @@ export default function ProjectsModule() {
                   {selectedTask.error && <div className="p-2 rounded bg-red-500/10 border border-red-500/20 text-xs text-red-400">{selectedTask.error}</div>}
                   {/* Human oversight */}
                   <div className="flex gap-2 pt-2 border-t border-neutral-800">
-                    <Button size="sm" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-7 text-xs" onClick={() => { /* approve task */ }}><ThumbsUp className="size-3" /> Approve</Button>
-                    <Button size="sm" variant="outline" className="flex-1 border-red-500/30 text-red-400 hover:bg-red-500/10 gap-1 h-7 text-xs" onClick={() => { /* reject task */ }}><ThumbsDown className="size-3" /> Reject</Button>
-                    <Button size="sm" variant="outline" className="border-neutral-700 text-slate-400 hover:text-sky-400 gap-1 h-7 text-xs" onClick={() => { /* reassign */ }}><Edit3 className="size-3" /> Reassign</Button>
+                    <Button size="sm" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-7 text-xs" onClick={async () => {
+                      // Approve task: mark as in_progress
+                      await fetch(`/api/tasks/${selectedTask.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'in_progress' }) })
+                      if (selectedProjectId) fetchProject(selectedProjectId)
+                      setTaskDialogOpen(false)
+                    }}><ThumbsUp className="size-3" /> Approve</Button>
+                    <Button size="sm" variant="outline" className="flex-1 border-red-500/30 text-red-400 hover:bg-red-500/10 gap-1 h-7 text-xs" onClick={async () => {
+                      // Reject task: mark as failed
+                      await fetch(`/api/tasks/${selectedTask.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'failed', error: 'Rejected by user' }) })
+                      if (selectedProjectId) fetchProject(selectedProjectId)
+                      setTaskDialogOpen(false)
+                    }}><ThumbsDown className="size-3" /> Reject</Button>
+                    <Button size="sm" variant="outline" className="border-neutral-700 text-slate-400 hover:text-sky-400 gap-1 h-7 text-xs" onClick={async () => {
+                      // Reassign: pick another agent of same type
+                      const currentAgent = selectedTask.assignee
+                      const sameTypeAgents = agents.filter(a => a.type === currentAgent?.type && a.id !== currentAgent?.id && a.isActive)
+                      if (sameTypeAgents.length > 0) {
+                        const newAgent = sameTypeAgents[0]
+                        await fetch(`/api/tasks/${selectedTask.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assigneeId: newAgent.id }) })
+                        if (selectedProjectId) fetchProject(selectedProjectId)
+                      } else {
+                        alert('No other agent of this type available for reassignment')
+                      }
+                      setTaskDialogOpen(false)
+                    }}><Edit3 className="size-3" /> Reassign</Button>
                   </div>
                 </div>
               </>

@@ -720,14 +720,26 @@ async function phaseAssign(
     const agent = await db.agent.findFirst({ where: { type: dbType, isActive: true } })
     const agentDef = AGENT_TYPES[agentType as AgentTypeKey]
 
-    // Update agent workload
+    // Update agent workload and skills
     if (agent) {
+      // Build skills list from assigned tasks
+      const taskSkills = tasks.map(t => t.taskDef.type || 'general')
+      const taskDescriptions = tasks.map(t => t.taskDef.description?.substring(0, 100) || '')
+      const capabilities = agentDef?.capabilities || []
+      const allSkills = [...new Set([...capabilities, ...taskSkills])]
+
       await db.agent.update({
         where: { id: agent.id },
         data: {
           workload: tasks.length,
           currentStatus: 'waiting',
           lastActiveAt: new Date(),
+          capabilities: JSON.stringify(allSkills),
+          config: JSON.stringify({
+            assignedTaskTypes: taskSkills,
+            taskDescriptions,
+            assignedAt: new Date().toISOString(),
+          }),
         },
       })
     }

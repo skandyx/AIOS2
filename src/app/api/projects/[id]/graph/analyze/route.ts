@@ -366,7 +366,31 @@ Focus on the MOST IMPORTANT issues. Return at most 15 findings. Return ONLY the 
           jsonStr = jsonStr.substring(firstBracket, lastBracket + 1)
         }
 
-        aiFindings = JSON.parse(jsonStr)
+        try {
+          aiFindings = JSON.parse(jsonStr)
+        } catch (parseError) {
+          // AI response wasn't valid JSON - try to fix common issues
+          console.error('AI code analysis JSON parse failed, attempting repair:', parseError)
+          try {
+            // Try fixing truncated JSON by closing open brackets/strings
+            let repaired = jsonStr
+            // Count unclosed brackets
+            const opens = (repaired.match(/\[/g) || []).length
+            const closes = (repaired.match(/\]/g) || []).length
+            for (let i = 0; i < opens - closes; i++) repaired += ']'
+            // Try to close last unclosed string
+            const quoteCount = (repaired.match(/(?<![\\])"/g) || []).length
+            if (quoteCount % 2 !== 0) repaired += '"'
+            // Add closing for the last object if needed
+            const braceOpens = (repaired.match(/\{/g) || []).length
+            const braceCloses = (repaired.match(/\}/g) || []).length
+            for (let i = 0; i < braceOpens - braceCloses; i++) repaired += '}'
+            for (let i = 0; i < opens - (repaired.match(/\]/g) || []).length; i++) repaired += ']'
+            aiFindings = JSON.parse(repaired)
+          } catch {
+            console.error('AI code analysis JSON repair also failed, skipping AI findings')
+          }
+        }
       } catch (error) {
         console.error('AI code analysis failed (non-critical):', error)
         // Non-critical: static analysis still works
@@ -444,10 +468,15 @@ Focus on the MOST IMPORTANT issues. Return at most 15 findings. Return ONLY the 
         for (const s of suggestions) {
           const idx = s.index - 1
           if (idx >= 0 && idx < topStaticFindings.length) {
-            await db.codeAnalysis.update({
-              where: { id: topStaticFindings[idx].id },
-              data: { suggestion: s.suggestion },
-            })
+            try {
+              await db.codeAnalysis.update({
+                where: { id: topStaticFindings[idx].id },
+                data: { suggestion: s.suggestion },
+              })
+            } catch (updateError) {
+              // Record may have been deleted or index mismatch - skip silently
+              console.error('CodeAnalysis update skipped:', updateError instanceof Error ? updateError.message : updateError)
+            }
           }
         }
       } catch (error) {
