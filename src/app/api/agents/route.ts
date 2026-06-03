@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-// GET /api/agents - List all agents with their status
+// GET /api/agents - List all agents with their status (including new fields)
 export async function GET() {
   try {
     const agents = await db.agent.findMany({
@@ -16,7 +16,21 @@ export async function GET() {
       },
     })
 
-    return NextResponse.json(agents)
+    // Include new fields in response
+    const enrichedAgents = agents.map(agent => ({
+      ...agent,
+      agentRole: agent.agentRole,
+      currentStatus: agent.currentStatus,
+      currentTaskId: agent.currentTaskId,
+      workload: agent.workload,
+      successRate: agent.successRate,
+      avgCompletionTime: agent.avgCompletionTime,
+      totalTasksCompleted: agent.totalTasksCompleted,
+      totalTasksFailed: agent.totalTasksFailed,
+      lastActiveAt: agent.lastActiveAt,
+    }))
+
+    return NextResponse.json(enrichedAgents)
   } catch (error) {
     console.error('List agents error:', error)
     return NextResponse.json(
@@ -30,7 +44,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, type, description, capabilities, config } = body
+    const { name, type, description, capabilities, config, agentRole, systemPrompt, avatar, model } = body
 
     if (!name || !type) {
       return NextResponse.json(
@@ -46,6 +60,16 @@ export async function POST(request: NextRequest) {
         description: description || null,
         capabilities: capabilities ? JSON.stringify(capabilities) : null,
         config: config ? JSON.stringify(config) : null,
+        agentRole: agentRole || 'specialist',
+        systemPrompt: systemPrompt || null,
+        avatar: avatar || null,
+        model: model || null,
+        currentStatus: 'idle',
+        workload: 0,
+        successRate: 0.0,
+        avgCompletionTime: 0.0,
+        totalTasksCompleted: 0,
+        totalTasksFailed: 0,
       },
     })
 

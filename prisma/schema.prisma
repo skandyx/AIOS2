@@ -130,6 +130,16 @@ model Agent {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  agentRole          String   @default("specialist") // "orchestrator" | "specialist" | "supervisor"
+  currentStatus      String   @default("idle") // "idle" | "working" | "waiting" | "blocked" | "error"
+  currentTaskId      String?  // Task currently being worked on
+  workload           Int      @default(0) // Current number of active tasks
+  successRate        Float    @default(0.0) // Task success rate 0-100
+  avgCompletionTime  Float    @default(0.0) // Average task completion time in minutes
+  totalTasksCompleted Int     @default(0)
+  totalTasksFailed   Int      @default(0)
+  lastActiveAt       DateTime?
+
   conversations Conversation[] // Conversations this agent is assigned to
   messages      Message[]      // Messages authored by this agent
   tasksAssigned Task[]         @relation("TaskAssignee") // Tasks assigned to this agent
@@ -155,6 +165,12 @@ model Task {
   completedAt DateTime? // When task was completed
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  kanbanColumn  String  @default("backlog") // "backlog" | "planned" | "in_progress" | "review" | "blocked" | "done"
+  dependencies String? // JSON array of task IDs this task depends on
+  estimatedHours Float?
+  actualHours Float?
+  agentType   String? // Type of agent needed: "project_manager" | "architect" | "developer" | "qa" | "security" | "research" | "documentation" | "orchestrator"
 
   creatorId   String   // User who created the task
   creator     User     @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: Cascade)
@@ -411,6 +427,12 @@ model Project {
   orchestratorStatus String? // "idle" | "analyzing" | "assigning" | "running" | "completed" | "failed"
   orchestratorLog    String? // JSON array of orchestrator events/actions
 
+  // Kanban & Metrics
+  kanbanConfig   String? // JSON: column definitions, WIP limits
+  timeline       String? // JSON: timeline events for the project
+  metrics        String? // JSON: calculated project metrics
+  humanOverrides Int     @default(0) // Number of human override actions
+
   // Documentation
   documentation String?  // AI-generated project documentation (markdown)
   readme        String?  // Generated README content
@@ -471,6 +493,9 @@ model AgentMessage {
   taskIds     String?  // JSON array of related task IDs
   metadata    String?  // JSON string for additional metadata
   createdAt   DateTime @default(now())
+
+  priority    String   @default("normal") // "low" | "normal" | "high" | "critical"
+  phase       String   @default("execution") // "planning" | "assignment" | "execution" | "review" | "delivery"
 
   projectId   String
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)

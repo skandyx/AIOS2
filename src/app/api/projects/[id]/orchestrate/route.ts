@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// POST /api/projects/[id]/orchestrate - Trigger orchestrator for a project
+// POST /api/projects/[id]/orchestrate - Trigger orchestrator for a project (full 6-phase orchestration)
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -8,9 +8,7 @@ export async function POST(
   try {
     const { id } = await params
 
-    // Dynamic import so a broken orchestrator module returns a clear error
-    // instead of crashing this route at module-load time.
-    let runOrchestration: (projectId: string, options?: { skipDocumentation?: boolean }) => Promise<Record<string, unknown>>
+    let runOrchestration: (projectId: string, options?: { skipDocumentation?: boolean; phase?: string }) => Promise<Record<string, unknown>>
     try {
       const mod = await import('@/lib/orchestrator')
       runOrchestration = (mod as Record<string, unknown>).runOrchestration as typeof runOrchestration
@@ -36,6 +34,42 @@ export async function POST(
     console.error('Orchestrate error:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Orchestration failed' },
+      { status: 500 }
+    )
+  }
+}
+
+// GET /api/projects/[id]/orchestrate - Get orchestration status with current phase, agent activities, progress
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+
+    let getOrchestrationStatus: (projectId: string) => Promise<Record<string, unknown> | null>
+    try {
+      const mod = await import('@/lib/orchestrator')
+      getOrchestrationStatus = (mod as Record<string, unknown>).getOrchestrationStatus as typeof getOrchestrationStatus
+    } catch (importError) {
+      console.error('Failed to load orchestrator module:', importError)
+      return NextResponse.json(
+        { error: 'Orchestrator module is unavailable.' },
+        { status: 503 }
+      )
+    }
+
+    const status = await getOrchestrationStatus(id)
+
+    if (!status) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    return NextResponse.json(status)
+  } catch (error) {
+    console.error('Get orchestrate status error:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch orchestration status' },
       { status: 500 }
     )
   }
