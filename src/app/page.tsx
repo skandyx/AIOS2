@@ -242,20 +242,26 @@ export default function AIOSDashboard() {
       });
 
       socketInstance.on('system:metrics', (data: any) => {
-        // Map nested API response to flat SystemMetrics interface
-        setSystemMetrics({
-          totalConversations: data.conversations?.total ?? data.totalConversations ?? 0,
-          totalMessages: data.messages?.total ?? data.totalMessages ?? 0,
-          totalMemories: data.memories?.total ?? data.totalMemories ?? 0,
-          activeAgents: data.agents?.active ?? data.activeAgents ?? 0,
-          pendingTasks: data.tasks?.pending ?? data.pendingTasks ?? 0,
-          activeWorkflows: data.workflows?.active ?? data.activeWorkflows ?? 0,
-          installedPlugins: data.plugins?.enabled ?? data.installedPlugins ?? 0,
-          connectedIntegrations: data.integrations?.connected ?? data.connectedIntegrations ?? 0,
-          uptime: data.system?.uptime ?? data.uptime,
-          memoryUsage: data.system?.ram?.usage ?? data.memoryUsage,
-          cpuUsage: data.system?.cpu?.usage ?? data.cpuUsage,
-        });
+        // WS metrics only provides system-level data (cpu, memory, uptime).
+        // DB-based metrics (agents, memories, conversations, tasks, etc.) come
+        // from the HTTP /api/monitoring endpoint — never overwrite those with
+        // the WS payload which lacks them.
+        setSystemMetrics((prev) => ({
+          ...prev,
+          // Only update system-level metrics from WS
+          uptime: data.uptime ?? data.system?.uptime ?? prev.uptime,
+          memoryUsage: data.memory?.percentage ?? data.system?.ram?.usage ?? prev.memoryUsage,
+          cpuUsage: data.cpu ?? data.system?.cpu?.usage ?? prev.cpuUsage,
+          // DB metrics — only update if WS actually provides the nested format
+          ...(data.conversations ? { totalConversations: data.conversations.total ?? prev.totalConversations } : {}),
+          ...(data.messages ? { totalMessages: data.messages.total ?? prev.totalMessages } : {}),
+          ...(data.memories ? { totalMemories: data.memories.total ?? prev.totalMemories } : {}),
+          ...(data.agents ? { activeAgents: data.agents.active ?? prev.activeAgents, totalAgents: data.agents.total ?? prev.totalAgents } : {}),
+          ...(data.tasks ? { pendingTasks: data.tasks.pending ?? prev.pendingTasks } : {}),
+          ...(data.workflows ? { activeWorkflows: data.workflows.active ?? prev.activeWorkflows } : {}),
+          ...(data.plugins ? { installedPlugins: data.plugins.enabled ?? prev.installedPlugins } : {}),
+          ...(data.integrations ? { connectedIntegrations: data.integrations.connected ?? prev.connectedIntegrations } : {}),
+        }));
       });
 
       socketInstance.on('notification', (data: any) => {
@@ -286,6 +292,7 @@ export default function AIOSDashboard() {
             totalConversations: data.conversations?.total ?? 0,
             totalMessages: data.messages?.total ?? 0,
             totalMemories: data.memories?.total ?? 0,
+            totalAgents: data.agents?.total ?? 0,
             activeAgents: data.agents?.active ?? 0,
             pendingTasks: data.tasks?.pending ?? 0,
             activeWorkflows: data.workflows?.active ?? 0,
@@ -301,7 +308,7 @@ export default function AIOSDashboard() {
       }
     };
     fetchMetrics();
-    const interval = setInterval(fetchMetrics, 60000);
+    const interval = setInterval(fetchMetrics, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -610,17 +617,17 @@ export default function AIOSDashboard() {
             <div className="hidden md:flex items-center gap-4 text-xs text-muted-foreground">
               <div className="flex items-center gap-1.5">
                 <Bot className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{systemMetrics.activeAgents} agents</span>
+                <span>{systemMetrics.totalAgents || systemMetrics.activeAgents} agent{(systemMetrics.totalAgents || systemMetrics.activeAgents) !== 1 ? 's' : ''}</span>
               </div>
               <div className="w-px h-4 bg-border/50" />
               <div className="flex items-center gap-1.5">
                 <Brain className="w-3.5 h-3.5 text-amber-400" />
-                <span>{systemMetrics.totalMemories} memories</span>
+                <span>{systemMetrics.totalMemories} memor{systemMetrics.totalMemories !== 1 ? 'ies' : 'y'}</span>
               </div>
               <div className="w-px h-4 bg-border/50" />
               <div className="flex items-center gap-1.5">
                 <Activity className="w-3.5 h-3.5 text-emerald-400" />
-                <span>{systemMetrics.totalConversations} chats</span>
+                <span>{systemMetrics.totalConversations} chat{systemMetrics.totalConversations !== 1 ? 's' : ''}</span>
               </div>
             </div>
 
@@ -733,7 +740,7 @@ export default function AIOSDashboard() {
               <span className="hidden sm:inline">v1.0.0-alpha</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="hidden sm:inline">{systemMetrics.activeAgents} agents</span>
+              <span className="hidden sm:inline">{systemMetrics.totalAgents || systemMetrics.activeAgents} agents</span>
               <span className="hidden sm:inline">•</span>
               <span className="hidden md:inline">{systemMetrics.totalMemories} memories</span>
               <span className="hidden md:inline">•</span>

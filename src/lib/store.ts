@@ -99,6 +99,7 @@ export interface SystemMetrics {
   totalConversations: number;
   totalMessages: number;
   totalMemories: number;
+  totalAgents: number;
   activeAgents: number;
   pendingTasks: number;
   activeWorkflows: number;
@@ -171,7 +172,7 @@ interface AIOSStore {
   notifications: Notification[];
   isVoiceActive: boolean;
   isListening: boolean;
-  setSystemMetrics: (metrics: SystemMetrics) => void;
+  setSystemMetrics: (metrics: SystemMetrics | ((prev: SystemMetrics) => SystemMetrics)) => void;
   addNotification: (notification: Omit<Notification, "id" | "timestamp" | "dismissed">) => void;
   dismissNotification: (id: string) => void;
   setVoiceActive: (active: boolean) => void;
@@ -248,6 +249,7 @@ export const useAIOSStore = create<AIOSStore>((set) => ({
     totalConversations: 0,
     totalMessages: 0,
     totalMemories: 0,
+    totalAgents: 0,
     activeAgents: 0,
     pendingTasks: 0,
     activeWorkflows: 0,
@@ -257,7 +259,10 @@ export const useAIOSStore = create<AIOSStore>((set) => ({
   notifications: [],
   isVoiceActive: false,
   isListening: false,
-  setSystemMetrics: (metrics) => set({ systemMetrics: metrics }),
+  setSystemMetrics: (metrics: SystemMetrics | ((prev: SystemMetrics) => SystemMetrics)) =>
+    set((state) => ({
+      systemMetrics: typeof metrics === 'function' ? metrics(state.systemMetrics) : metrics,
+    })),
   addNotification: (notification) =>
     set((state) => ({
       notifications: [
