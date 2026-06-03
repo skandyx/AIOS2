@@ -301,13 +301,16 @@ export class AgentCommunicationBus {
 
 export async function getLocalMemory(agentId: string): Promise<Record<string, unknown>> {
   const memories = await db.memory.findMany({
-    where: { taskId: agentId, isArchived: false },
+    where: {
+      key: { startsWith: `${agentId}:` },
+      isArchived: false,
+    },
     orderBy: { importance: 'desc' },
     take: 20,
   })
   const result: Record<string, unknown> = {}
   for (const m of memories) {
-    result[m.key] = JSON.parse(m.value)
+    try { result[m.key] = JSON.parse(m.value) } catch { result[m.key] = m.value }
   }
   return result
 }
@@ -350,18 +353,42 @@ export async function storeMemory(
   key: string,
   value: unknown
 ): Promise<void> {
-  const userId = (await db.project.findUnique({ where: { id: projectId }, select: { userId: true } }))?.userId || ''
-  await db.memory.create({
-    data: {
-      type,
-      key: `${agentId}:${key}`,
-      value: JSON.stringify(value),
-      importance: type === 'error' ? 0.9 : 0.5,
-      source: 'task',
-      userId,
-      taskId: agentId, // Use taskId field to store agent reference
-    },
-  })
+  try {
+    // Get the userId from the project - must be a valid User ID
+    const project = await db.project.findUnique({ where: { id: projectId }, select: { userId: true } })
+    if (!project?.userId) {
+      // No valid userId - try to find any user or skip memory storage
+      const anyUser = await db.user.findFirst({ select: { id: true } })
+      if (!anyUser) return // No users exist, can't store memory
+      await db.memory.create({
+        data: {
+          type,
+          key: `${agentId}:${key}`,
+          value: JSON.stringify(value),
+          importance: type === 'error' ? 0.9 : 0.5,
+          source: 'task',
+          userId: anyUser.id,
+          context: JSON.stringify({ agentId, projectId }),
+        },
+      })
+      return
+    }
+
+    await db.memory.create({
+      data: {
+        type,
+        key: `${agentId}:${key}`,
+        value: JSON.stringify(value),
+        importance: type === 'error' ? 0.9 : 0.5,
+        source: 'task',
+        userId: project.userId,
+        context: JSON.stringify({ agentId, projectId }),
+      },
+    })
+  } catch (error) {
+    // Don't let memory storage failure break orchestration
+    console.error('storeMemory failed (non-fatal):', error instanceof Error ? error.message : error)
+  }
 }
 
 // ─── Ensure specialized agents exist ──────────────────────────────────────────
