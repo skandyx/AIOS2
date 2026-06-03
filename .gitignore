@@ -58,3 +58,35 @@ server.log
 # Database
 *.db
 *.db-journal
+
+# PID files
+*.pid
+.next.pid
+next-server.pid
+
+# nohup output
+nohup*.out
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Uploads (user data)
+/upload/
+
+# Agent context (generated)
+/agent-ctx/
+
+# Worklogs
+worklog*.md
+
+# Mini services runtime files
+mini-services/*/nohup*.out
+mini-services/*/*.pid
+
+# Download temp
+/download/
+
+# Backup files
+*.bak
+*.backup
