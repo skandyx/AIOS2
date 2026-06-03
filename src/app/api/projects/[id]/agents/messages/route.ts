@@ -32,7 +32,7 @@ export async function GET(
     const [messages, total] = await Promise.all([
       db.agentMessage.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: 'asc' },
         skip,
         take: limit,
         include: {

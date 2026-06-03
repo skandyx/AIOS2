@@ -2,6 +2,36 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { chatCompletion, type ChatMessage } from '@/lib/providers'
 
+// ─── Safe JSON Parser with Repair Logic ─────────────────────────────────────
+
+function safeJsonParse(text: string): unknown {
+  // Try direct parse first
+  try {
+    return JSON.parse(text)
+  } catch {}
+
+  // Try extracting from code blocks
+  const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/)
+  if (codeBlockMatch) {
+    try { return JSON.parse(codeBlockMatch[1].trim()) } catch {}
+  }
+
+  // Try finding array/object
+  const firstBracket = text.indexOf('[')
+  const lastBracket = text.lastIndexOf(']')
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    try { return JSON.parse(text.substring(firstBracket, lastBracket + 1)) } catch {}
+  }
+
+  const firstBrace = text.indexOf('{')
+  const lastBrace = text.lastIndexOf('}')
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try { return JSON.parse(text.substring(firstBrace, lastBrace + 1)) } catch {}
+  }
+
+  return null
+}
+
 // ─── Regex-Based Static Security Patterns ───────────────────────────────────
 
 interface StaticFinding {
@@ -356,40 +386,11 @@ Focus on the MOST IMPORTANT issues. Return at most 15 findings. Return ONLY the 
         const completion = await chatCompletion({ messages, temperature: 0.2 })
         const raw = completion.content.trim()
 
-        // Extract JSON
-        let jsonStr = raw
-        const codeBlockMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/)
-        if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim()
-        const firstBracket = jsonStr.indexOf('[')
-        const lastBracket = jsonStr.lastIndexOf(']')
-        if (firstBracket !== -1 && lastBracket > firstBracket) {
-          jsonStr = jsonStr.substring(firstBracket, lastBracket + 1)
-        }
-
-        try {
-          aiFindings = JSON.parse(jsonStr)
-        } catch (parseError) {
-          // AI response wasn't valid JSON - try to fix common issues
-          console.error('AI code analysis JSON parse failed, attempting repair:', parseError)
-          try {
-            // Try fixing truncated JSON by closing open brackets/strings
-            let repaired = jsonStr
-            // Count unclosed brackets
-            const opens = (repaired.match(/\[/g) || []).length
-            const closes = (repaired.match(/\]/g) || []).length
-            for (let i = 0; i < opens - closes; i++) repaired += ']'
-            // Try to close last unclosed string
-            const quoteCount = (repaired.match(/(?<![\\])"/g) || []).length
-            if (quoteCount % 2 !== 0) repaired += '"'
-            // Add closing for the last object if needed
-            const braceOpens = (repaired.match(/\{/g) || []).length
-            const braceCloses = (repaired.match(/\}/g) || []).length
-            for (let i = 0; i < braceOpens - braceCloses; i++) repaired += '}'
-            for (let i = 0; i < opens - (repaired.match(/\]/g) || []).length; i++) repaired += ']'
-            aiFindings = JSON.parse(repaired)
-          } catch {
-            console.error('AI code analysis JSON repair also failed, skipping AI findings')
-          }
+        const parsed = safeJsonParse(raw)
+        if (Array.isArray(parsed)) {
+          aiFindings = parsed
+        } else {
+          console.error('AI code analysis JSON parse failed, skipping AI findings')
         }
       } catch (error) {
         console.error('AI code analysis failed (non-critical):', error)
@@ -454,28 +455,18 @@ Focus on the MOST IMPORTANT issues. Return at most 15 findings. Return ONLY the 
         const completion = await chatCompletion({ messages: suggestionMessages, temperature: 0.2 })
         const raw = completion.content.trim()
 
-        let jsonStr = raw
-        const codeBlockMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/)
-        if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim()
-        const firstBracket = jsonStr.indexOf('[')
-        const lastBracket = jsonStr.lastIndexOf(']')
-        if (firstBracket !== -1 && lastBracket > firstBracket) {
-          jsonStr = jsonStr.substring(firstBracket, lastBracket + 1)
-        }
-
-        const suggestions = JSON.parse(jsonStr) as Array<{ index: number; suggestion: string }>
+        const parsed = safeJsonParse(raw)
+        const suggestions = (Array.isArray(parsed) ? parsed : []) as Array<{ index: number; suggestion: string }>
 
         for (const s of suggestions) {
           const idx = s.index - 1
           if (idx >= 0 && idx < topStaticFindings.length) {
-            try {
+            const existing = await db.codeAnalysis.findUnique({ where: { id: topStaticFindings[idx].id } })
+            if (existing) {
               await db.codeAnalysis.update({
                 where: { id: topStaticFindings[idx].id },
                 data: { suggestion: s.suggestion },
               })
-            } catch (updateError) {
-              // Record may have been deleted or index mismatch - skip silently
-              console.error('CodeAnalysis update skipped:', updateError instanceof Error ? updateError.message : updateError)
             }
           }
         }

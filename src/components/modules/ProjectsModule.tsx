@@ -43,6 +43,7 @@ interface TaskData {
   id: string; title: string; description?: string; status: string; priority: string
   type?: string | null; progress?: number; assignedTo?: string; assigneeId?: string | null
   assignee?: { id: string; name: string; type: string; avatar?: string | null } | null
+  kanbanColumn?: string; agentType?: string | null
   createdAt: string; updatedAt: string; startedAt?: string | null; completedAt?: string | null
   dueDate?: string | null; error?: string | null; result?: string | null
 }
@@ -58,6 +59,7 @@ interface AgentMessage {
 interface AgentData {
   id: string; name: string; type: string; description?: string | null; avatar?: string | null
   isActive: boolean; capabilities?: string | null; config?: string | null; model?: string | null
+  currentStatus?: string; workload?: number; successRate?: number
   createdAt: string; updatedAt: string
   _count?: { tasksAssigned: number; messages: number }
 }
@@ -374,6 +376,7 @@ export default function ProjectsModule() {
   const [codeFolderPath, setCodeFolderPath] = useState('')
   const [uploadingFolder, setUploadingFolder] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const chatEndRef = useRef<HTMLDivElement | null>(null)
 
   // Fetch projects list
   const fetchProjects = useCallback(async () => {
@@ -410,14 +413,24 @@ export default function ProjectsModule() {
     if (selectedProjectId) { fetchProject(selectedProjectId); fetchOrchStatus(selectedProjectId) }
   }, [selectedProjectId, fetchProject, fetchOrchStatus])
 
-  // Poll orchestration status
+  // Poll orchestration status AND refresh project data
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current)
     if (selectedProjectId && (orchStatus?.orchestratorStatus === 'running' || orchStatus?.orchestratorStatus === 'analyzing' || orchStatus?.orchestratorStatus === 'assigning' || project?.orchestratorStatus === 'running' || project?.orchestratorStatus === 'analyzing')) {
-      pollRef.current = setInterval(() => fetchOrchStatus(selectedProjectId), 5000)
+      pollRef.current = setInterval(() => {
+        fetchOrchStatus(selectedProjectId)
+        fetchProject(selectedProjectId)  // Also refresh tasks, messages, agents
+      }, 5000)
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [selectedProjectId, orchStatus?.orchestratorStatus, project?.orchestratorStatus, fetchOrchStatus])
+  }, [selectedProjectId, orchStatus?.orchestratorStatus, project?.orchestratorStatus, fetchOrchStatus, fetchProject])
+
+  // Auto-scroll chat to bottom when messages change
+  useEffect(() => {
+    if (chatEndRef.current && activeTab === 'chat') {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages, activeTab])
 
   // Start orchestration
   const startOrchestration = async () => {
@@ -757,7 +770,6 @@ export default function ProjectsModule() {
               </div>
               <ScrollArea className="flex-1 p-3 overflow-y-auto max-h-[calc(100vh-280px)]">
                 <div className="space-y-2 max-w-3xl mx-auto">
-                  {filteredMessages.length === 0 && <div className="text-center py-10 text-slate-500 text-xs">No messages yet. Start orchestration to see agent conversations.</div>}
                   {filteredMessages.map(msg => {
                     const mtConfig = MESSAGE_TYPE_CONFIG[msg.type] || MESSAGE_TYPE_CONFIG.status
                     const fromColor = getAgentColor(msg.fromAgent?.type || msg.fromRole)
@@ -774,33 +786,40 @@ export default function ProjectsModule() {
                             <span className="text-[9px] text-slate-600 ml-auto shrink-0">{formatRelativeTime(msg.createdAt)}</span>
                           </div>
                           <p className="text-xs text-slate-300 whitespace-pre-wrap break-words">{msg.content}</p>
-                          {/* Human oversight buttons */}
+                          {/* Human oversight buttons - only show for agent instruction messages, NOT for user messages */}
+                          {msg.fromRole !== 'user' && msg.type === 'instruction' && (
                           <div className="flex items-center gap-1 mt-2">
                             <Button variant="ghost" size="sm" className="h-5 text-[9px] gap-1 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 px-1.5" onClick={async () => {
-                              // Approve: mark related pending tasks as in_progress
-                              const relatedTasks = tasks.filter(t => t.assigneeId === msg.fromAgentId && t.status === 'pending')
+                              // Approve: move related pending tasks to in_progress and update kanban
+                              const relatedTasks = tasks.filter(t => t.assigneeId === msg.fromAgentId && (t.status === 'pending' || t.kanbanColumn === 'planned'))
                               for (const t of relatedTasks) {
-                                await fetch(`/api/tasks/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'in_progress' }) })
+                                await fetch(`/api/tasks/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'in_progress', kanbanColumn: 'in_progress' }) })
                               }
-                              if (relatedTasks.length === 0 && selectedProjectId) {
-                                // If no specific task, send approval message
-                                await fetch(`/api/projects/${selectedProjectId}/agents/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: '✅ Approved. Proceed with execution.', fromRole: 'user', toRole: msg.fromAgentId || 'all', type: 'instruction' }) })
+                              // Also try to move tasks by agent type
+                              const agentType = msg.fromAgent?.type
+                              if (agentType) {
+                                const agentTasks = tasks.filter(t => !t.assigneeId && t.kanbanColumn === 'planned' && t.status === 'pending')
+                                for (const t of agentTasks.slice(0, 2)) {
+                                  await fetch(`/api/tasks/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'in_progress', kanbanColumn: 'in_progress' }) })
+                                }
                               }
-                              if (selectedProjectId) fetchProject(selectedProjectId)
+                              if (selectedProjectId) {
+                                await fetch(`/api/projects/${selectedProjectId}/agents/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: '✅ Approved. Proceed with execution.', fromRole: 'user', toRole: msg.fromAgentId || 'all', type: 'result' }) })
+                                fetchProject(selectedProjectId)
+                              }
                             }}><ThumbsUp className="size-2.5" /> Approve</Button>
                             <Button variant="ghost" size="sm" className="h-5 text-[9px] gap-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 px-1.5" onClick={async () => {
-                              // Reject: mark related in_progress tasks as failed
+                              // Reject: mark related tasks as failed
                               const relatedTasks = tasks.filter(t => t.assigneeId === msg.fromAgentId && (t.status === 'in_progress' || t.status === 'pending'))
                               for (const t of relatedTasks) {
-                                await fetch(`/api/tasks/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'failed', error: 'Rejected by user' }) })
+                                await fetch(`/api/tasks/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'failed', kanbanColumn: 'blocked', error: 'Rejected by user' }) })
                               }
-                              if (relatedTasks.length === 0 && selectedProjectId) {
-                                await fetch(`/api/projects/${selectedProjectId}/agents/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: '❌ Rejected. Please stop and revise your approach.', fromRole: 'user', toRole: msg.fromAgentId || 'all', type: 'instruction' }) })
+                              if (selectedProjectId) {
+                                await fetch(`/api/projects/${selectedProjectId}/agents/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: '❌ Rejected. Please stop and revise your approach.', fromRole: 'user', toRole: msg.fromAgentId || 'all', type: 'result' }) })
+                                fetchProject(selectedProjectId)
                               }
-                              if (selectedProjectId) fetchProject(selectedProjectId)
                             }}><ThumbsDown className="size-2.5" /> Reject</Button>
                             <Button variant="ghost" size="sm" className="h-5 text-[9px] gap-1 text-sky-500 hover:text-sky-400 hover:bg-sky-500/10 px-1.5" onClick={async () => {
-                              // Override: send override instruction
                               const overrideMsg = prompt('Enter override instruction:')
                               if (overrideMsg && selectedProjectId) {
                                 await fetch(`/api/projects/${selectedProjectId}/agents/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: `🔄 Override: ${overrideMsg}`, fromRole: 'user', toRole: msg.fromAgentId || 'all', type: 'instruction' }) })
@@ -808,10 +827,13 @@ export default function ProjectsModule() {
                               }
                             }}><Edit3 className="size-2.5" /> Override</Button>
                           </div>
+                          )}
                         </div>
                       </motion.div>
                     )
                   })}
+                  {filteredMessages.length === 0 && <div className="text-center py-10 text-slate-500 text-xs">No messages yet. Start orchestration to see agent conversations.</div>}
+                  <div ref={chatEndRef} />
                 </div>
               </ScrollArea>
               <div className="border-t border-neutral-800 p-3 shrink-0">
@@ -836,6 +858,18 @@ export default function ProjectsModule() {
                       </svg>
                       <div className="absolute inset-0 flex flex-col items-center justify-center"><span className="text-3xl font-bold text-emerald-400">{overallProgress}%</span><span className="text-[10px] text-slate-500">Complete</span></div>
                     </div>
+                    <div className="flex items-center gap-4 mt-4">
+                      <div className="text-center"><span className="text-lg font-bold text-emerald-400">{doneTasks}</span><span className="text-[9px] text-slate-500 block">Done</span></div>
+                      <div className="text-center"><span className="text-lg font-bold text-amber-400">{inProgressTasks}</span><span className="text-[9px] text-slate-500 block">Active</span></div>
+                      <div className="text-center"><span className="text-lg font-bold text-slate-400">{tasks.filter(t => t.status === 'pending').length}</span><span className="text-[9px] text-slate-500 block">Pending</span></div>
+                      <div className="text-center"><span className="text-lg font-bold text-red-400">{blockedTasks}</span><span className="text-[9px] text-slate-500 block">Blocked</span></div>
+                    </div>
+                    {(orchPhase === 'running' || orchPhase === 'executing') && tasks.some(t => t.status === 'pending' || t.status === 'in_progress') && (
+                      <Button size="sm" className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-7 text-xs" onClick={async () => {
+                        if (!selectedProjectId) return
+                        try { await fetch(`/api/projects/${selectedProjectId}/execute`, { method: 'POST' }); fetchProject(selectedProjectId) } catch { /* */ }
+                      }}><Zap className="size-3" /> Execute Next Task</Button>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -844,19 +878,24 @@ export default function ProjectsModule() {
                   <CardHeader className="pb-2 pt-4 px-4"><CardTitle className="text-sm text-white flex items-center gap-2"><Users className="size-4 text-emerald-400" /> Per-Agent Progress</CardTitle></CardHeader>
                   <CardContent className="px-4 pb-4 space-y-2">
                     {agents.map(a => {
-                      const aTasks = tasks.filter(t => t.assigneeId === a.id); const done = aTasks.filter(t => t.status === 'done' || t.status === 'completed').length
+                      const aTasks = tasks.filter(t => t.assigneeId === a.id)
+                      const done = aTasks.filter(t => t.status === 'completed').length
+                      const inProg = aTasks.filter(t => t.status === 'in_progress').length
                       const prog = aTasks.length > 0 ? Math.round((done / aTasks.length) * 100) : 0
                       const ac = getAgentColor(a.type)
+                      const statusConf = AGENT_STATUS_CONFIG[a.currentStatus || 'idle'] || AGENT_STATUS_CONFIG.idle
                       return (
                         <div key={a.id} className="flex items-center gap-3">
                           <AgentAvatar type={a.type} name={a.name} size="sm" />
-                          <span className={`text-xs ${ac.text} w-24 truncate`}>{a.name}</span>
+                          <span className={`text-xs ${ac.text} w-28 truncate`}>{a.name}</span>
                           <Progress value={prog} className="flex-1 h-2 bg-neutral-800 [&>div]:bg-gradient-to-r [&>div]:from-emerald-500 [&>div]:to-teal-400" />
                           <span className="text-xs text-slate-400 w-10 text-right">{prog}%</span>
+                          <span className={`text-[9px] ${statusConf.color} ${statusConf.pulse ? 'animate-pulse' : ''}`}>{statusConf.label}</span>
+                          {inProg > 0 && <span className="text-[9px] text-amber-400">{inProg} active</span>}
                         </div>
                       )
                     })}
-                    {agents.length === 0 && <div className="text-xs text-slate-500">No agents</div>}
+                    {agents.length === 0 && <div className="text-xs text-slate-500">No agents yet. Start the orchestrator to create agents.</div>}
                   </CardContent>
                 </Card>
 
@@ -888,7 +927,14 @@ export default function ProjectsModule() {
               <div className="p-4 h-full">
                 <div className="flex gap-3 h-full min-w-max">
                   {KANBAN_COLUMNS.map(col => {
-                    const colTasks = tasks.filter(t => t.status === col.status || (col.status === 'todo' && t.status === 'pending') || (col.status === 'done' && t.status === 'completed'))
+                    const colTasks = tasks.filter(t => {
+                      const kCol = t.kanbanColumn || 'backlog'
+                      // Primary: match by kanbanColumn field (set by orchestrator/executor)
+                      if (kCol === col.id) return true
+                      // Fallback: for completed tasks that might not have kanbanColumn updated
+                      if (col.id === 'done' && t.status === 'completed') return true
+                      return false
+                    })
                     const isOverWip = col.wip > 0 && colTasks.length > col.wip
                     return (
                       <div key={col.id} className="w-64 flex flex-col shrink-0">
@@ -1266,34 +1312,41 @@ export default function ProjectsModule() {
                   )}
                   <div className="text-[10px] text-slate-500">Created: {formatDate(selectedTask.createdAt)} {selectedTask.completedAt && `• Completed: ${formatDate(selectedTask.completedAt)}`}</div>
                   {selectedTask.error && <div className="p-2 rounded bg-red-500/10 border border-red-500/20 text-xs text-red-400">{selectedTask.error}</div>}
-                  {/* Human oversight */}
+                  {/* Human oversight - show for pending and in-progress tasks */}
+                  {(selectedTask.status === 'pending' || selectedTask.status === 'in_progress') && (
                   <div className="flex gap-2 pt-2 border-t border-neutral-800">
                     <Button size="sm" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-7 text-xs" onClick={async () => {
-                      // Approve task: mark as in_progress
-                      await fetch(`/api/tasks/${selectedTask.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'in_progress' }) })
-                      if (selectedProjectId) fetchProject(selectedProjectId)
+                      // Approve task: mark as in_progress and move to in_progress column
+                      await fetch(`/api/tasks/${selectedTask.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'in_progress', kanbanColumn: 'in_progress' }) })
+                      // Also trigger execution
+                      if (selectedProjectId) {
+                        await fetch(`/api/projects/${selectedProjectId}/execute`, { method: 'POST' }).catch(() => {})
+                        fetchProject(selectedProjectId)
+                      }
                       setTaskDialogOpen(false)
                     }}><ThumbsUp className="size-3" /> Approve</Button>
                     <Button size="sm" variant="outline" className="flex-1 border-red-500/30 text-red-400 hover:bg-red-500/10 gap-1 h-7 text-xs" onClick={async () => {
-                      // Reject task: mark as failed
-                      await fetch(`/api/tasks/${selectedTask.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'failed', error: 'Rejected by user' }) })
+                      // Reject task: mark as failed and move to blocked column
+                      await fetch(`/api/tasks/${selectedTask.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'failed', kanbanColumn: 'blocked', error: 'Rejected by user' }) })
                       if (selectedProjectId) fetchProject(selectedProjectId)
                       setTaskDialogOpen(false)
                     }}><ThumbsDown className="size-3" /> Reject</Button>
                     <Button size="sm" variant="outline" className="border-neutral-700 text-slate-400 hover:text-sky-400 gap-1 h-7 text-xs" onClick={async () => {
-                      // Reassign: pick another agent of same type
+                      // Reassign: pick another agent of same type or any available agent
                       const currentAgent = selectedTask.assignee
                       const sameTypeAgents = agents.filter(a => a.type === currentAgent?.type && a.id !== currentAgent?.id && a.isActive)
-                      if (sameTypeAgents.length > 0) {
-                        const newAgent = sameTypeAgents[0]
+                      const anyAvailable = agents.filter(a => a.id !== currentAgent?.id && a.isActive && (a.currentStatus === 'idle' || a.currentStatus === 'waiting'))
+                      const newAgent = sameTypeAgents[0] || anyAvailable[0]
+                      if (newAgent) {
                         await fetch(`/api/tasks/${selectedTask.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assigneeId: newAgent.id }) })
                         if (selectedProjectId) fetchProject(selectedProjectId)
                       } else {
-                        alert('No other agent of this type available for reassignment')
+                        alert('No other agent available for reassignment')
                       }
                       setTaskDialogOpen(false)
                     }}><Edit3 className="size-3" /> Reassign</Button>
                   </div>
+                  )}
                 </div>
               </>
             )

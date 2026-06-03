@@ -11,6 +11,7 @@
 
 import { db } from '@/lib/db'
 import { chatCompletion, type ChatMessage } from '@/lib/providers'
+import { executeAgentTasks } from '@/lib/agent-executor'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -317,7 +318,7 @@ export async function getLocalMemory(agentId: string): Promise<Record<string, un
 
 export async function getSharedMemory(projectId: string): Promise<Record<string, unknown>> {
   const memories = await db.memory.findMany({
-    where: { type: 'project', isArchived: false },
+    where: { type: 'project', isArchived: false, context: { contains: projectId } },
     orderBy: { importance: 'desc' },
     take: 50,
   })
@@ -814,6 +815,15 @@ async function phaseExecute(
     `## ⚡ Phase 4: EXECUTE\n\nAgents are now executing their assigned tasks.\n\nTasks will be processed in dependency order. The system will monitor progress and handle blockers automatically.\n\nUse the Execute button or poll the API to advance task execution step by step.`,
     'high', undefined, 'execution'
   )
+
+  // Start executing the first task immediately
+  try {
+    executeAgentTasks(projectId).catch(err => {
+      console.error('Initial execution error:', err)
+    })
+  } catch {
+    // Non-critical
+  }
 }
 
 // ─── Autonomy Features ───────────────────────────────────────────────────────
@@ -1236,6 +1246,19 @@ export async function checkAndAdvancePhases(projectId: string): Promise<{
   if (project.orchestratorStatus === 'running') {
     const bus = new AgentCommunicationBus(projectId)
     await autoReassignBlockedTasks(projectId, bus)
+  }
+
+  // Auto-execute next task when project is running
+  const pendingTasks = project.tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length
+  if (project.orchestratorStatus === 'running' && pendingTasks > 0) {
+    try {
+      // Execute next task in background - don't await to avoid blocking the status check
+      executeAgentTasks(projectId).catch(err => {
+        console.error('Auto-execution error:', err)
+      })
+    } catch {
+      // Non-critical
+    }
   }
 
   return { currentPhase, shouldReview, shouldDeliver, allCompleted }

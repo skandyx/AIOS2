@@ -78,6 +78,7 @@ export async function PATCH(
     if (body.priority !== undefined) updateData.priority = body.priority
     if (body.description !== undefined) updateData.description = body.description
     if (body.assigneeId !== undefined) updateData.assigneeId = body.assigneeId
+    if (body.kanbanColumn !== undefined) updateData.kanbanColumn = body.kanbanColumn
 
     const updated = await db.task.update({
       where: { id },

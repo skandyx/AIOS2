@@ -57,13 +57,8 @@ export async function GET(
       },
     })
 
-    // Map DB status back to frontend status for each task
-    const mappedTasks = tasks.map((task) => ({
-      ...task,
-      status: toFrontendStatus(task.status),
-    }))
-
-    return NextResponse.json(mappedTasks)
+    // Return tasks with their original DB status - the frontend handles display
+    return NextResponse.json(tasks)
   } catch (error) {
     console.error('List project tasks error:', error)
     return NextResponse.json(
@@ -129,13 +124,7 @@ export async function POST(
 
     const task = await db.task.create({ data: taskData })
 
-    // Map DB status back to frontend status in the response
-    const response = {
-      ...task,
-      status: toFrontendStatus(task.status),
-    }
-
-    return NextResponse.json(response, { status: 201 })
+    return NextResponse.json(task, { status: 201 })
   } catch (error) {
     console.error('Create project task error:', error)
     return NextResponse.json(
