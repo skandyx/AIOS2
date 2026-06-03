@@ -370,6 +370,9 @@ export default function ProjectsModule() {
   const [selectedTask, setSelectedTask] = useState<TaskData | null>(null)
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
   const [depSelectedNode, setDepSelectedNode] = useState<string | null>(null)
+  const [orchError, setOrchError] = useState<string>('')
+  const [codeFolderPath, setCodeFolderPath] = useState('')
+  const [uploadingFolder, setUploadingFolder] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Fetch projects list
@@ -418,22 +421,50 @@ export default function ProjectsModule() {
 
   // Start orchestration
   const startOrchestration = async () => {
-    if (!selectedProjectId) return; setOrchLoading(true)
+    if (!selectedProjectId) return; setOrchLoading(true); setOrchError('')
     try {
       const res = await fetch(`/api/projects/${selectedProjectId}/orchestrate`, { method: 'POST' })
       if (!res.ok) {
         const data = await res.json().catch(() => ({ error: 'Orchestration failed' }))
         const errorMsg = data.error || 'Orchestration failed'
+        setOrchError(errorMsg)
         // Update project status to failed so the error banner shows
         setProject(prev => prev ? { ...prev, orchestratorStatus: 'failed' } : null)
-        console.error('Orchestration error:', errorMsg)
+      } else {
+        setOrchError('')
       }
       fetchOrchStatus(selectedProjectId); fetchProject(selectedProjectId)
     } catch (err) {
-      console.error('Orchestration network error:', err)
+      const errMsg = err instanceof Error ? err.message : 'Network error during orchestration'
+      setOrchError(errMsg)
       setProject(prev => prev ? { ...prev, orchestratorStatus: 'failed' } : null)
     }
     finally { setOrchLoading(false) }
+  }
+
+  // Upload code folder for orchestrator to analyze
+  const uploadCodeFolder = async () => {
+    if (!selectedProjectId || !codeFolderPath.trim()) return
+    setUploadingFolder(true)
+    try {
+      const res = await fetch(`/api/projects/${selectedProjectId}/scan-folder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderPath: codeFolderPath.trim() }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        fetchProject(selectedProjectId)
+        setCodeFolderPath('')
+      } else {
+        const err = await res.json().catch(() => ({ error: 'Failed to scan folder' }))
+        alert(err.error || 'Failed to scan folder')
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Network error')
+    } finally {
+      setUploadingFolder(false)
+    }
   }
 
   // Send message
@@ -579,6 +610,42 @@ export default function ProjectsModule() {
                   </CardContent>
                 </Card>
 
+                {/* Code Folder Input */}
+                <Card className="bg-[#0d1117] border-neutral-800 py-0">
+                  <CardHeader className="pb-2 pt-4 px-4"><CardTitle className="text-sm text-white flex items-center gap-2"><Folder className="size-4 text-emerald-400" /> Code Folder</CardTitle></CardHeader>
+                  <CardContent className="px-4 pb-4 space-y-3">
+                    <p className="text-xs text-slate-400">Add a local folder path for the orchestrator to analyze. The agents will review the code structure and content.</p>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        placeholder="/path/to/your/project"
+                        value={codeFolderPath}
+                        onChange={e => setCodeFolderPath(e.target.value)}
+                        className="bg-neutral-900 border-neutral-700 text-white text-xs h-8"
+                      />
+                      <Button
+                        onClick={uploadCodeFolder}
+                        disabled={uploadingFolder || !codeFolderPath.trim()}
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-8 text-xs shrink-0"
+                      >
+                        {uploadingFolder ? <Loader2 className="size-3 animate-spin" /> : <Upload className="size-3" />}
+                        Scan
+                      </Button>
+                    </div>
+                    {project?.localPath && (
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <HardDrive className="size-3" />
+                        <span>Current: <span className="text-emerald-400">{project.localPath}</span></span>
+                      </div>
+                    )}
+                    {files.length > 0 && (
+                      <div className="text-xs text-slate-400">
+                        <span className="text-emerald-400">{files.length}</span> files indexed for orchestrator analysis
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
                 {/* Orchestrator Status + Progress */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Card className="bg-[#0d1117] border-neutral-800 py-0">
@@ -593,7 +660,10 @@ export default function ProjectsModule() {
                       {orchPhase === 'failed' && (
                         <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400">
                           <AlertCircle className="size-3.5 inline mr-1.5 -mt-0.5" />
-                          Orchestrator failed. This usually means no AI API key is configured. Go to <span className="font-semibold">AI Models → API Keys</span> to add one, then retry.
+                          {orchError
+                            ? <>{orchError}</>
+                            : <>Orchestrator failed. This usually means no AI API key is configured. Go to <span className="font-semibold">AI Models → API Keys</span> to add one, then retry.</>
+                          }
                         </div>
                       )}
                       {/* Phase progression */}

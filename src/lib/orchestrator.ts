@@ -488,11 +488,29 @@ IMPORTANT RULES:
 7. Order tasks by dependency - tasks that depend on others should come later
 8. Return ONLY the JSON array, no markdown, no explanation`
 
+  // Load project files for code context
+  let codeContext = ''
+  try {
+    const projectFiles = await db.projectFile.findMany({
+      where: { projectId, isDirectory: false, source: { in: ['upload', 'generated'] } },
+      orderBy: { path: 'asc' },
+      take: 30,
+      select: { name: true, path: true, language: true, content: true },
+    })
+    if (projectFiles.length > 0) {
+      const fileSummaries = projectFiles.map(f => {
+        const preview = f.content ? f.content.substring(0, 500) : '(no content)'
+        return `### ${f.path} (${f.language || 'unknown'})\n\`\`\`${f.language || ''}\n${preview}\n\`\`\``
+      }).join('\n\n')
+      codeContext = `\n\n**Project Code Files (${projectFiles.length} files):**\n${fileSummaries}`
+    }
+  } catch { /* ignore file loading errors */ }
+
   const userMessage = `Project: ${project.name}
 Description: ${project.description || 'No description provided'}
 Category: ${project.category || 'Not specified'}
 Tech Stack: ${techStackDisplay || 'Not specified'}
-Requirements: ${project.requirements || 'No specific requirements'}`
+Requirements: ${project.requirements || 'No specific requirements'}${codeContext}`
 
   const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },

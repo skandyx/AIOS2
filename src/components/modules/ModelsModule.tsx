@@ -563,12 +563,13 @@ export default function ModelsModule() {
     return '$$$$$'
   }
 
-  // Validate API key
+  // Validate AND save API key
   const handleValidateKey = async () => {
     if (!apiKeyInput.trim()) return
     setIsValidating(true)
     setValidationResult(null)
     try {
+      // First validate the key
       const res = await fetch('/api/models/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -582,6 +583,40 @@ export default function ModelsModule() {
         valid: data.valid,
         message: data.message,
       })
+
+      // If valid (or even if we can't validate), save the key to .env
+      if (data.valid || selectedProvider === 'ollama') {
+        try {
+          const saveRes = await fetch('/api/models/api-keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              provider: selectedProvider,
+              apiKey: apiKeyInput.trim(),
+            }),
+          })
+          if (saveRes.ok) {
+            const saveData = await saveRes.json()
+            setValidationResult({
+              valid: true,
+              message: `API key validated and saved to .env (${saveData.envKey}). The key is now active!`,
+            })
+            // Refresh provider status
+            fetchConfig()
+          } else {
+            const errData = await saveRes.json().catch(() => ({ error: 'Failed to save' }))
+            setValidationResult({
+              valid: data.valid,
+              message: `Key is valid but failed to save to .env: ${errData.error || 'Unknown error'}. Add it manually to your .env file.`,
+            })
+          }
+        } catch {
+          setValidationResult({
+            valid: data.valid,
+            message: 'Key is valid but could not save to .env (network error). Add it manually to your .env file.',
+          })
+        }
+      }
     } catch {
       setValidationResult({
         valid: false,
@@ -1048,7 +1083,7 @@ export default function ModelsModule() {
               <Sparkles className="size-4 text-cyan-400 mt-0.5 flex-shrink-0" />
               <div className="text-[11px] text-neutral-400">
                 <p className="text-neutral-300 font-medium mb-1">How API keys work</p>
-                <p>API keys are stored in your <code className="text-cyan-400 bg-cyan-500/10 px-1 rounded">.env</code> file on the server. They are never exposed to the browser. After adding a key, restart the dev server for it to take effect.</p>
+                <p>API keys are validated and automatically saved to your <code className="text-cyan-400 bg-cyan-500/10 px-1 rounded">.env</code> file on the server. They take effect immediately — no restart needed.</p>
               </div>
             </div>
 
@@ -1143,7 +1178,7 @@ export default function ModelsModule() {
                         ) : (
                           <Check className="size-3.5" />
                         )}
-                        Validate
+                        Validate & Save
                       </Button>
                     </div>
                   </div>
