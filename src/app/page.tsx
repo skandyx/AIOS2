@@ -192,7 +192,6 @@ export default function AIOSDashboard() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
-  const [activeAgents, setActiveAgents] = useState(3);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // ─── HTTP Health Check (fallback for online status) ─────────────────────
@@ -263,12 +262,8 @@ export default function AIOSDashboard() {
         addNotification(data);
       });
 
-      socketInstance.on('agent:status', (data: any) => {
-        if (data.status === 'active') {
-          setActiveAgents(prev => prev + 1);
-        } else if (data.status === 'idle' || data.status === 'offline') {
-          setActiveAgents(prev => Math.max(0, prev - 1));
-        }
+      socketInstance.on('agent:status', () => {
+        // Agent status changes are reflected via systemMetrics polling
       });
     };
 
@@ -615,7 +610,7 @@ export default function AIOSDashboard() {
             <div className="hidden md:flex items-center gap-4 text-xs text-muted-foreground">
               <div className="flex items-center gap-1.5">
                 <Bot className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{activeAgents} agents</span>
+                <span>{systemMetrics.activeAgents} agents</span>
               </div>
               <div className="w-px h-4 bg-border/50" />
               <div className="flex items-center gap-1.5">
@@ -738,7 +733,7 @@ export default function AIOSDashboard() {
               <span className="hidden sm:inline">v1.0.0-alpha</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="hidden sm:inline">{activeAgents} agents</span>
+              <span className="hidden sm:inline">{systemMetrics.activeAgents} agents</span>
               <span className="hidden sm:inline">•</span>
               <span className="hidden md:inline">{systemMetrics.totalMemories} memories</span>
               <span className="hidden md:inline">•</span>

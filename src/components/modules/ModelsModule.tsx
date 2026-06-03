@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -462,6 +463,11 @@ export default function ModelsModule() {
   const [validationResult, setValidationResult] = useState<{ valid: boolean; message: string } | null>(null)
   const [isLoadingConfig, setIsLoadingConfig] = useState(false)
 
+  // Save state tracking
+  const [isDirty, setIsDirty] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const { toast } = useToast()
+
   // Fetch provider config on mount
   const fetchConfig = useCallback(async () => {
     setIsLoadingConfig(true)
@@ -498,6 +504,24 @@ export default function ModelsModule() {
     fetchConfig()
   }, [fetchConfig])
 
+  // Load saved preferences on mount
+  useEffect(() => {
+    const loadPrefs = async () => {
+      try {
+        const res = await fetch('/api/models/preferences')
+        if (res.ok) {
+          const data = await res.json()
+          if (data.activeModelId) {
+            setModels(prev => prev.map(m => ({ ...m, isActive: m.id === data.activeModelId })))
+          }
+          if (data.taskModelOverrides) setTaskModelOverrides(data.taskModelOverrides)
+          if (data.fallbackChain) setFallbackChain(data.fallbackChain)
+        }
+      } catch {}
+    }
+    loadPrefs()
+  }, [])
+
   const filteredModels = useMemo(() => {
     if (providerFilter === 'all') return models
     return models.filter(m => m.provider === providerFilter)
@@ -509,6 +533,7 @@ export default function ModelsModule() {
 
   const setActiveModel = (id: string) => {
     setModels(prev => prev.map(m => ({ ...m, isActive: m.id === id })))
+    setIsDirty(true)
   }
 
   const toggleCompare = (id: string) => {
@@ -564,6 +589,33 @@ export default function ModelsModule() {
       })
     } finally {
       setIsValidating(false)
+    }
+  }
+
+  // Save model configuration
+  const handleSaveModelConfig = async () => {
+    setIsSaving(true)
+    try {
+      const activeModel = models.find(m => m.isActive)
+      const res = await fetch('/api/models/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activeModelId: activeModel?.id || 'gpt4-turbo',
+          taskModelOverrides,
+          fallbackChain,
+        }),
+      })
+      if (res.ok) {
+        setIsDirty(false)
+        toast({ title: 'Configuration saved', description: 'Model preferences updated successfully' })
+      } else {
+        toast({ title: 'Save failed', description: 'Could not save model configuration', variant: 'destructive' })
+      }
+    } catch {
+      toast({ title: 'Save failed', description: 'Network error', variant: 'destructive' })
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -623,6 +675,16 @@ export default function ModelsModule() {
           >
             <Key className="size-3.5" />
             API Keys
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className={`text-[11px] h-8 gap-1.5 ${isDirty ? 'border-cyan-500/50 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20' : 'border-neutral-700 text-neutral-500'}`}
+            onClick={handleSaveModelConfig}
+            disabled={!isDirty || isSaving}
+          >
+            <Save className="size-3.5" />
+            {isSaving ? 'Saving...' : 'Save'}
           </Button>
           <Button
             variant={compareMode ? 'default' : 'outline'}
@@ -882,7 +944,7 @@ export default function ModelsModule() {
                       </span>
                       <select
                         value={currentModelId}
-                        onChange={e => setTaskModelOverrides(prev => ({ ...prev, [task]: e.target.value }))}
+                        onChange={e => { setTaskModelOverrides(prev => ({ ...prev, [task]: e.target.value })); setIsDirty(true) }}
                         className="bg-neutral-900 border border-neutral-700 text-[10px] text-neutral-400 rounded px-1.5 py-1 h-6 outline-none cursor-pointer"
                       >
                         {models.filter(m => m.capabilities.includes(task) && m.status !== 'offline').map(m => (
@@ -1234,7 +1296,7 @@ export default function ModelsModule() {
             <DialogClose asChild>
               <Button variant="ghost" size="sm" className="text-neutral-400">Cancel</Button>
             </DialogClose>
-            <Button size="sm" className="bg-cyan-600 hover:bg-cyan-700 text-white">Save Configuration</Button>
+            <Button size="sm" className="bg-cyan-600 hover:bg-cyan-700 text-white" onClick={() => { handleSaveModelConfig(); setConfigOpen(false) }}>Save Configuration</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

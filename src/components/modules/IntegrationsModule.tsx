@@ -17,6 +17,7 @@ import {
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog'
+import { useToast } from '@/hooks/use-toast'
 import {
   Plug,
   Plus,
@@ -33,6 +34,7 @@ import {
   ExternalLink,
   Workflow,
   Sparkles,
+  Save,
 } from 'lucide-react'
 
 type IntegrationStatus = 'connected' | 'disconnected' | 'error' | 'pending_auth'
@@ -99,6 +101,34 @@ export default function IntegrationsModule() {
   const [selectedIntegration, setSelectedIntegration] = useState<Integration | null>(null)
   const [configDialogOpen, setConfigDialogOpen] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editUrl, setEditUrl] = useState('')
+  const { toast } = useToast()
+
+  const openConfigDialog = useCallback((integration: Integration) => {
+    setSelectedIntegration(integration)
+    setEditName(integration.name)
+    setEditUrl(integration.url || '')
+    setConfigDialogOpen(true)
+  }, [])
+
+  const handleSaveIntegration = useCallback(() => {
+    if (!selectedIntegration) return
+
+    setIntegrations(prev => prev.map(int => {
+      if (int.id === selectedIntegration.id) {
+        return { ...int, name: editName, url: editUrl || undefined }
+      }
+      return int
+    }))
+
+    toast({
+      title: 'Integration saved',
+      description: `${editName} configuration has been updated.`,
+    })
+
+    setConfigDialogOpen(false)
+  }, [selectedIntegration, editName, editUrl, toast])
 
   const automationPlatforms = integrations.filter(i => i.category === 'automation')
   const regularIntegrations = integrations.filter(i => i.category !== 'automation')
@@ -288,10 +318,7 @@ export default function IntegrationsModule() {
                       variant="ghost"
                       size="sm"
                       className="h-7 w-7 p-0 text-neutral-600 hover:text-neutral-300"
-                      onClick={() => {
-                        setSelectedIntegration(platform)
-                        setConfigDialogOpen(true)
-                      }}
+                      onClick={() => openConfigDialog(platform)}
                     >
                       <Settings className="size-3.5" />
                     </Button>
@@ -479,10 +506,7 @@ export default function IntegrationsModule() {
                     variant="ghost"
                     size="sm"
                     className="h-7 w-7 p-0 text-neutral-600 hover:text-neutral-300"
-                    onClick={() => {
-                      setSelectedIntegration(int)
-                      setConfigDialogOpen(true)
-                    }}
+                    onClick={() => openConfigDialog(int)}
                   >
                     <Settings className="size-3.5" />
                   </Button>
@@ -577,7 +601,8 @@ export default function IntegrationsModule() {
               <div className="space-y-2">
                 <label className="text-xs font-medium text-neutral-400">Name</label>
                 <Input
-                  defaultValue={selectedIntegration.name}
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
                   className="bg-neutral-900 border-neutral-700 text-sm"
                 />
               </div>
@@ -586,7 +611,8 @@ export default function IntegrationsModule() {
                   {selectedIntegration.isFree ? 'Platform URL' : 'Webhook URL'}
                 </label>
                 <Input
-                  defaultValue={selectedIntegration.url || ''}
+                  value={editUrl}
+                  onChange={e => setEditUrl(e.target.value)}
                   placeholder={selectedIntegration.isFree ? 'http://localhost:...' : 'https://...'}
                   className="bg-neutral-900 border-neutral-700 text-sm"
                 />
@@ -630,7 +656,10 @@ export default function IntegrationsModule() {
             <DialogClose asChild>
               <Button variant="ghost" size="sm" className="text-neutral-400">Cancel</Button>
             </DialogClose>
-            <Button size="sm" className="bg-cyan-600 hover:bg-cyan-700 text-white">Save Changes</Button>
+            <Button size="sm" className="bg-cyan-600 hover:bg-cyan-700 text-white gap-1.5" onClick={handleSaveIntegration}>
+              <Save className="size-3.5" />
+              Save Changes
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

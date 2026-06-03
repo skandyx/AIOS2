@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -22,6 +23,7 @@ import {
   Fingerprint,
   Clock,
   FileWarning,
+  Save,
 } from 'lucide-react'
 
 type AutonomyLevel = 'manual' | 'assisted' | 'semi_autonomous' | 'supervised_autonomous' | 'fully_autonomous'
@@ -95,6 +97,66 @@ const DANGER_ACTIONS = [
 
 export default function SecurityModule() {
   const [selectedLevel, setSelectedLevel] = useState<AutonomyLevel>('assisted')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isDirty, setIsDirty] = useState(false)
+  const [initialLevel, setInitialLevel] = useState<AutonomyLevel>('assisted')
+
+  const { toast } = useToast()
+
+  // Fetch settings on mount
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await fetch('/api/security/settings')
+        if (res.ok) {
+          const data = await res.json()
+          const settings = data.settings || data
+          if (settings.autonomyLevel) {
+            setSelectedLevel(settings.autonomyLevel)
+            setInitialLevel(settings.autonomyLevel)
+          }
+        }
+      } catch {
+        // Use defaults
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchSettings()
+  }, [])
+
+  // Track dirty state when selectedLevel changes
+  useEffect(() => {
+    setIsDirty(selectedLevel !== initialLevel)
+  }, [selectedLevel, initialLevel])
+
+  // Save handler
+  const handleSave = useCallback(async () => {
+    setIsSaving(true)
+    try {
+      const res = await fetch('/api/security/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: {
+            autonomyLevel: selectedLevel,
+          },
+        }),
+      })
+      if (res.ok) {
+        setInitialLevel(selectedLevel)
+        setIsDirty(false)
+        toast({ title: 'Settings saved', description: 'Security settings updated successfully' })
+      } else {
+        toast({ title: 'Save failed', description: 'Could not save security settings', variant: 'destructive' })
+      }
+    } catch {
+      toast({ title: 'Save failed', description: 'Network error', variant: 'destructive' })
+    } finally {
+      setIsSaving(false)
+    }
+  }, [selectedLevel, toast])
 
   const securityScore = useMemo(() => {
     const scores: Record<AutonomyLevel, number> = {
@@ -153,8 +215,40 @@ export default function SecurityModule() {
     }
   }
 
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="size-8 border-2 border-neutral-600 border-t-cyan-400 rounded-full animate-spin" />
+          <span className="text-sm text-neutral-400">Loading security settings...</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="h-full flex flex-col">
+      {/* Save Bar */}
+      <div className="flex items-center justify-between px-6 py-3 border-b border-neutral-800 bg-[#0d1117]">
+        <div className="flex items-center gap-2">
+          <Shield className="w-4 h-4 text-red-400" />
+          <span className="text-sm font-medium text-neutral-200">Security Configuration</span>
+          {isDirty && (
+            <Badge variant="outline" className="text-[9px] border-amber-500/30 text-amber-400 bg-amber-500/10">
+              Unsaved changes
+            </Badge>
+          )}
+        </div>
+        <Button
+          onClick={handleSave}
+          disabled={!isDirty || isSaving}
+          className={`gap-2 h-8 text-xs ${isDirty ? 'bg-cyan-600 hover:bg-cyan-700 text-white' : 'bg-neutral-800 text-neutral-500'}`}
+        >
+          <Save className="w-3.5 h-3.5" />
+          {isSaving ? 'Saving...' : 'Save Changes'}
+        </Button>
+      </div>
+
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-4 p-6">
       {/* Top Row: Security Score + Autonomy Level */}
