@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, ComponentType } from 'react';
+import type { ErrorInfo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { io } from 'socket.io-client';
 import {
@@ -166,7 +167,70 @@ const navItems: NavItem[] = [
   { id: 'knowledge-graph', label: 'Knowledge Graph', icon: Network, color: 'text-cyan-400', shortcut: '=' },
 ];
 
-// ─── Active Module Component ────────────────────────────────────────────
+// ─── Error Boundary ────────────────────────────────────────────────────
+
+// React error boundaries require a class component.
+// This catches render errors from lazy-loaded modules and shows a
+// user-friendly error message instead of crashing the entire page
+// (which would cause a redirect back to the Dashboard).
+
+type ModuleErrorBoundaryProps = {
+  children: React.ReactNode;
+  moduleId: string;
+  onRetry: () => void;
+};
+
+type ModuleErrorBoundaryState = {
+  hasError: boolean;
+  error: Error | null;
+};
+
+class ModuleErrorBoundary extends React.Component<ModuleErrorBoundaryProps, ModuleErrorBoundaryState> {
+  constructor(props: ModuleErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ModuleErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error(`[ModuleErrorBoundary] Error in module "${this.props.moduleId}":`, error, errorInfo);
+  }
+
+  handleRetry = () => {
+    // First clear the error boundary state so children re-render
+    this.setState({ hasError: false, error: null });
+    // Then invoke the parent callback to clear cache + bump retry key
+    this.props.onRetry();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center h-full p-8">
+          <div className="text-center max-w-md">
+            <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-200 mb-2">Module Render Error</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              The <span className="text-cyan-400 font-mono">{this.props.moduleId}</span> module encountered a render error:{' '}
+              <span className="text-red-300">{this.state.error?.message}</span>
+            </p>
+            <Button
+              onClick={this.handleRetry}
+              variant="outline"
+              className="border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
+            >
+              Try Again
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ─── Main Page Component ────────────────────────────────────────────────────────
 
@@ -193,6 +257,7 @@ export default function AIOSDashboard() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [moduleRetryKey, setModuleRetryKey] = useState(0);
 
   // ─── HTTP Health Check (fallback for online status) ─────────────────────
   useEffect(() => {
@@ -617,17 +682,22 @@ export default function AIOSDashboard() {
             <div className="hidden md:flex items-center gap-4 text-xs text-muted-foreground">
               <div className="flex items-center gap-1.5">
                 <Bot className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{systemMetrics.totalAgents || systemMetrics.activeAgents} agent{(systemMetrics.totalAgents || systemMetrics.activeAgents) !== 1 ? 's' : ''}</span>
+                <span>{systemMetrics.totalAgents || systemMetrics.activeAgents || 0} agent{(systemMetrics.totalAgents || systemMetrics.activeAgents) !== 1 ? 's' : ''}</span>
               </div>
               <div className="w-px h-4 bg-border/50" />
               <div className="flex items-center gap-1.5">
                 <Brain className="w-3.5 h-3.5 text-amber-400" />
-                <span>{systemMetrics.totalMemories} memor{systemMetrics.totalMemories !== 1 ? 'ies' : 'y'}</span>
+                <span>{systemMetrics.totalMemories || 0} memor{systemMetrics.totalMemories !== 1 ? 'ies' : 'y'}</span>
               </div>
               <div className="w-px h-4 bg-border/50" />
               <div className="flex items-center gap-1.5">
                 <Activity className="w-3.5 h-3.5 text-emerald-400" />
-                <span>{systemMetrics.totalConversations} chat{systemMetrics.totalConversations !== 1 ? 's' : ''}</span>
+                <span>{systemMetrics.totalConversations || 0} chat{systemMetrics.totalConversations !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="w-px h-4 bg-border/50" />
+              <div className="flex items-center gap-1.5">
+                <Wrench className="w-3.5 h-3.5 text-cyan-400" />
+                <span>{systemMetrics.installedPlugins || 0} skill{(systemMetrics.installedPlugins) !== 1 ? 's' : ''}</span>
               </div>
             </div>
 
@@ -724,7 +794,15 @@ export default function AIOSDashboard() {
                 transition={{ duration: 0.2, ease: 'easeOut' }}
                 className="h-full"
               >
-                <LazyModuleLoader moduleId={activeModule} />
+                <ModuleErrorBoundary
+                  moduleId={activeModule}
+                  onRetry={() => {
+                    delete moduleCache[activeModule];
+                    setModuleRetryKey((k) => k + 1);
+                  }}
+                >
+                  <LazyModuleLoader key={`${activeModule}-${moduleRetryKey}`} moduleId={activeModule} />
+                </ModuleErrorBoundary>
               </motion.div>
             </AnimatePresence>
           </main>
@@ -740,9 +818,11 @@ export default function AIOSDashboard() {
               <span className="hidden sm:inline">v1.0.0-alpha</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="hidden sm:inline">{systemMetrics.totalAgents || systemMetrics.activeAgents} agents</span>
+              <span className="hidden sm:inline">{systemMetrics.totalAgents || systemMetrics.activeAgents || 0} agents</span>
               <span className="hidden sm:inline">•</span>
-              <span className="hidden md:inline">{systemMetrics.totalMemories} memories</span>
+              <span className="hidden sm:inline">{systemMetrics.totalMemories || 0} memories</span>
+              <span className="hidden sm:inline">•</span>
+              <span className="hidden md:inline">{systemMetrics.installedPlugins || 0} skills</span>
               <span className="hidden md:inline">•</span>
               <span className="hidden lg:inline">AIOS — AI Operating System</span>
             </div>

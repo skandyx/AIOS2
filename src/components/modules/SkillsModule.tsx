@@ -1173,8 +1173,8 @@ export default function SkillsModule() {
                 value="url"
                 className="text-[11px] data-[state=active]:bg-neutral-800 data-[state=active]:text-cyan-400 gap-1.5 px-3"
               >
-                <Link2 className="h-3 w-3" />
-                From URL
+                <Github className="h-3 w-3" />
+                GitHub Install
               </TabsTrigger>
               <TabsTrigger
                 value="installed"
@@ -1327,252 +1327,263 @@ export default function SkillsModule() {
               <div className="text-center">
                 <div className="flex items-center justify-center gap-2 mb-2">
                   <Link2 className="h-6 w-6 text-cyan-400" />
-                  <h3 className="text-lg font-semibold text-neutral-200">Install from URL</h3>
+                  <h3 className="text-lg font-semibold text-neutral-200">Install from GitHub</h3>
                 </div>
                 <p className="text-[12px] text-neutral-500 max-w-md mx-auto">
-                  Paste any URL — a GitHub repository, skill manifest, or documentation page — and we&apos;ll verify it, detect the type, and check if it&apos;s already installed.
+                  Paste a GitHub repository URL to scan for skill files. We&apos;ll detect available skills and let you install them with one click.
                 </p>
               </div>
 
-              {/* Verifier */}
-              <GitHubUrlVerifier
-                onVerified={setGithubVerification}
-                onInstall={handleInstallFromGithub}
-                installing={installingFromUrl}
-                placeholder="https://github.com/owner/repo or any skill URL"
-              />
+              {/* Quick Scan - Direct URL Input */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Github className="h-4 w-4 text-cyan-400" />
+                  <p className="text-sm font-medium text-neutral-200">Quick Scan</p>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Paste GitHub URL (e.g., https://github.com/user/skills-repo)"
+                    className="border-neutral-800 bg-neutral-900/50 text-sm text-neutral-200 placeholder:text-neutral-600 focus:border-cyan-500/50 focus:ring-cyan-500/20 flex-1"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const target = e.target as HTMLInputElement
+                        if (target.value.trim()) handleScanRepo(target.value.trim())
+                      }
+                    }}
+                    defaultValue={scannedRepoUrl || ''}
+                  />
+                  <Button
+                    size="sm"
+                    className="text-[11px] gap-1.5 bg-cyan-600 hover:bg-cyan-700 text-white shrink-0"
+                    onClick={(e) => {
+                      const input = (e.currentTarget.previousElementSibling as HTMLInputElement)
+                      if (input?.value?.trim()) handleScanRepo(input.value.trim())
+                    }}
+                    disabled={scanningRepo}
+                  >
+                    {scanningRepo ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Scanning...
+                      </>
+                    ) : (
+                      <>
+                        <FileSearch className="h-3.5 w-3.5" />
+                        Scan Repository
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-[10px] text-neutral-600">
+                  Scans the repository for skill.md, manifest.json, and other AIOS-compatible skill files.
+                </p>
+              </div>
 
-              {/* Scan Repo for Skills Button (shown after GitHub verification) */}
-              {githubVerification && githubVerification.valid && githubVerification.repoInfo && (
-                <div className="space-y-4">
-                  <Separator className="bg-neutral-800" />
+              <Separator className="bg-neutral-800" />
 
-                  {/* Scan for Skills Section */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <FileSearch className="h-4 w-4 text-cyan-400" />
-                        <p className="text-sm font-medium text-neutral-200">Scan Repository for Skills</p>
-                      </div>
-                      <Button
-                        size="sm"
-                        className="text-[11px] gap-1.5 bg-cyan-600 hover:bg-cyan-700 text-white"
-                        onClick={() => handleScanRepo(githubVerification.repoInfo!.html_url)}
-                        disabled={scanningRepo}
-                      >
-                        {scanningRepo ? (
-                          <>
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            Scanning...
-                          </>
-                        ) : (
-                          <>
-                            <FileSearch className="h-3.5 w-3.5" />
-                            Scan for Skills
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                    <p className="text-[11px] text-neutral-500">
-                      Scan the repository&apos;s file tree for skill definition files (skill.md, manifest.json, etc.)
-                    </p>
+              {/* Scan Error */}
+              {scanError && repoSkills.length === 0 && (
+                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+                  <AlertCircle className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[11px] text-amber-400 font-medium">No Skills Found</p>
+                    <p className="text-[10px] text-neutral-500 mt-0.5">{scanError}</p>
                   </div>
-
-                  {/* Scan Error */}
-                  {scanError && repoSkills.length === 0 && (
-                    <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
-                      <AlertCircle className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-[11px] text-amber-400 font-medium">No Skills Found</p>
-                        <p className="text-[10px] text-neutral-500 mt-0.5">{scanError}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Scan Error (actual error) */}
-                  {scanError && repoSkills.length > 0 && (
-                    <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-500/5 border border-red-500/20">
-                      <XCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
-                      <p className="text-[11px] text-red-400">{scanError}</p>
-                    </div>
-                  )}
-
-                  {/* Found Skills List */}
-                  {repoSkills.length > 0 && (
-                    <div className="space-y-3">
-                      {/* Header */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Layers className="h-4 w-4 text-emerald-400" />
-                          <p className="text-sm font-medium text-neutral-200">
-                            {repoSkills.length} Skill{repoSkills.length !== 1 ? 's' : ''} Found
-                          </p>
-                        </div>
-                        {repoSkills.some((s) => !installedSlugs.has(generateSlug(s.name))) && (
-                          <Button
-                            size="sm"
-                            className="text-[11px] gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-                            onClick={handleInstallAllRepoSkills}
-                            disabled={installingAllRepoSkills}
-                          >
-                            {installingAllRepoSkills ? (
-                              <>
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                Installing All...
-                              </>
-                            ) : (
-                              <>
-                                <Download className="h-3.5 w-3.5" />
-                                Install All
-                              </>
-                            )}
-                          </Button>
-                        )}
-                      </div>
-
-                      {/* Skills List */}
-                      <div className="space-y-2">
-                        {repoSkills.map((skill) => {
-                          const isInstalled = installedSlugs.has(generateSlug(skill.name))
-                          const isInstalling = installingRepoSkill === skill.name
-                          const emoji = CATEGORY_EMOJIS[skill.category as SkillCategory] || '📦'
-
-                          return (
-                            <div
-                              key={skill.filePath}
-                              className="p-3 rounded-lg bg-neutral-900/50 border border-neutral-800 hover:border-neutral-700 transition-all"
-                            >
-                              <div className="flex items-start gap-3">
-                                {/* Icon */}
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-800/80 text-base">
-                                  {emoji}
-                                </div>
-
-                                {/* Info */}
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-0.5">
-                                    <p className="text-sm font-semibold text-neutral-200 truncate">{skill.name}</p>
-                                    <Badge className="text-[9px] bg-cyan-500/10 text-cyan-400 border-cyan-500/20 border px-1.5 shrink-0">
-                                      {skill.category}
-                                    </Badge>
-                                    <Badge
-                                      variant="outline"
-                                      className="text-[9px] border-neutral-700 text-neutral-500 px-1.5 shrink-0 gap-0.5"
-                                    >
-                                      {skill.type === 'manifest' ? 'Manifest' : skill.type === 'skill-json' ? 'Skill JSON' : 'Markdown'}
-                                    </Badge>
-                                  </div>
-                                  <p className="text-[11px] text-neutral-400 line-clamp-2 mb-1.5">
-                                    {skill.description}
-                                  </p>
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    {/* File path */}
-                                    <span className="text-[9px] text-neutral-600 font-mono truncate max-w-[200px]">
-                                      {skill.filePath}
-                                    </span>
-                                    {/* Permissions */}
-                                    {skill.permissions.length > 0 && (
-                                      <div className="flex items-center gap-1">
-                                        <Shield className="h-2.5 w-2.5 text-amber-400/60" />
-                                        {skill.permissions.slice(0, 3).map((perm) => (
-                                          <Badge
-                                            key={perm}
-                                            variant="outline"
-                                            className="text-[8px] border-neutral-700 text-neutral-500 px-1"
-                                          >
-                                            {perm}
-                                          </Badge>
-                                        ))}
-                                        {skill.permissions.length > 3 && (
-                                          <span className="text-[8px] text-neutral-600">
-                                            +{skill.permissions.length - 3}
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Install button */}
-                                <div className="shrink-0">
-                                  {isInstalled ? (
-                                    <Button
-                                      size="sm"
-                                      className="h-7 text-[10px] gap-1 bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/25"
-                                      disabled
-                                    >
-                                      <CheckCircle2 className="h-3 w-3" />
-                                      Installed
-                                    </Button>
-                                  ) : (
-                                    <Button
-                                      size="sm"
-                                      className="h-7 text-[10px] gap-1 bg-cyan-600 hover:bg-cyan-700 text-white"
-                                      onClick={() => handleInstallRepoSkill(skill)}
-                                      disabled={isInstalling || installingAllRepoSkills}
-                                    >
-                                      {isInstalling ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                      ) : (
-                                        <Download className="h-3 w-3" />
-                                      )}
-                                      {isInstalling ? '...' : 'Install'}
-                                    </Button>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 
-              {/* Help text */}
-              {!githubVerification && (
+              {/* Scan Error (actual error) */}
+              {scanError && repoSkills.length > 0 && (
+                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-500/5 border border-red-500/20">
+                  <XCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
+                  <p className="text-[11px] text-red-400">{scanError}</p>
+                </div>
+              )}
+
+              {/* Found Skills List */}
+              {repoSkills.length > 0 && (
+                <div className="space-y-3">
+                  {/* Header */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Layers className="h-4 w-4 text-emerald-400" />
+                      <p className="text-sm font-medium text-neutral-200">
+                        {repoSkills.length} Skill{repoSkills.length !== 1 ? 's' : ''} Found
+                      </p>
+                    </div>
+                    {repoSkills.some((s) => !installedSlugs.has(generateSlug(s.name))) && (
+                      <Button
+                        size="sm"
+                        className="text-[11px] gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                        onClick={handleInstallAllRepoSkills}
+                        disabled={installingAllRepoSkills}
+                      >
+                        {installingAllRepoSkills ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Installing All...
+                          </>
+                        ) : (
+                          <>
+                            <Download className="h-3.5 w-3.5" />
+                            Install All Missing
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Skills List */}
+                  <div className="space-y-2">
+                    {repoSkills.map((skill) => {
+                      const isInstalled = installedSlugs.has(generateSlug(skill.name))
+                      const isInstalling = installingRepoSkill === skill.name
+                      const emoji = CATEGORY_EMOJIS[skill.category as SkillCategory] || '📦'
+
+                      return (
+                        <div
+                          key={skill.filePath}
+                          className="p-3 rounded-lg bg-neutral-900/50 border border-neutral-800 hover:border-neutral-700 transition-all"
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Icon */}
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-800/80 text-base">
+                              {emoji}
+                            </div>
+
+                            {/* Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <p className="text-sm font-semibold text-neutral-200 truncate">{skill.name}</p>
+                                <Badge className="text-[9px] bg-cyan-500/10 text-cyan-400 border-cyan-500/20 border px-1.5 shrink-0">
+                                  {skill.category}
+                                </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className="text-[9px] border-neutral-700 text-neutral-500 px-1.5 shrink-0 gap-0.5"
+                                >
+                                  {skill.type === 'manifest' ? 'Manifest' : skill.type === 'skill-json' ? 'Skill JSON' : 'Markdown'}
+                                </Badge>
+                              </div>
+                              <p className="text-[11px] text-neutral-400 line-clamp-2 mb-1.5">
+                                {skill.description}
+                              </p>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {/* File path */}
+                                <span className="text-[9px] text-neutral-600 font-mono truncate max-w-[200px]">
+                                  {skill.filePath}
+                                </span>
+                                {/* Permissions */}
+                                {skill.permissions.length > 0 && (
+                                  <div className="flex items-center gap-1">
+                                    <Shield className="h-2.5 w-2.5 text-amber-400/60" />
+                                    {skill.permissions.slice(0, 3).map((perm) => (
+                                      <Badge
+                                        key={perm}
+                                        variant="outline"
+                                        className="text-[8px] border-neutral-700 text-neutral-500 px-1"
+                                      >
+                                        {perm}
+                                      </Badge>
+                                    ))}
+                                    {skill.permissions.length > 3 && (
+                                      <span className="text-[8px] text-neutral-600">
+                                        +{skill.permissions.length - 3}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Install button */}
+                            <div className="shrink-0">
+                              {isInstalled ? (
+                                <Button
+                                  size="sm"
+                                  className="h-7 text-[10px] gap-1 bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/25"
+                                  disabled
+                                >
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  Installed
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  className="h-7 text-[10px] gap-1 bg-cyan-600 hover:bg-cyan-700 text-white"
+                                  onClick={() => handleInstallRepoSkill(skill)}
+                                  disabled={isInstalling || installingAllRepoSkills}
+                                >
+                                  {isInstalling ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Download className="h-3 w-3" />
+                                  )}
+                                  {isInstalling ? '...' : 'Install'}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <Separator className="bg-neutral-800" />
+
+              {/* Advanced: Full URL Verification */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-amber-400" />
+                  <p className="text-sm font-medium text-neutral-200">Advanced Verification</p>
+                  <Badge variant="outline" className="text-[9px] border-neutral-700 text-neutral-500 px-1.5">Optional</Badge>
+                </div>
+                <p className="text-[11px] text-neutral-500">
+                  For a deeper analysis of the repository (usefulness score, security check, auto-detection), use the full verifier below.
+                </p>
+
+                {/* Verifier */}
+                <GitHubUrlVerifier
+                  onVerified={setGithubVerification}
+                  onInstall={handleInstallFromGithub}
+                  installing={installingFromUrl}
+                  placeholder="https://github.com/owner/repo or any skill URL"
+                />
+              </div>
+
+              {/* Help text - shown when no scan results yet */}
+              {repoSkills.length === 0 && !scanError && !scanningRepo && (
                 <div className="space-y-3 pt-4">
-                  <p className="text-[10px] text-neutral-600 text-center">What gets verified:</p>
+                  <p className="text-[10px] text-neutral-600 text-center">What gets detected:</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="flex items-start gap-2 p-3 rounded-lg bg-neutral-900/30 border border-neutral-800">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
+                      <FileSearch className="h-4 w-4 text-cyan-400 mt-0.5 shrink-0" />
                       <div>
-                        <p className="text-[11px] text-neutral-300 font-medium">Repository Validity</p>
-                        <p className="text-[10px] text-neutral-600">Confirms the repo exists and is accessible</p>
+                        <p className="text-[11px] text-neutral-300 font-medium">Skill Definitions</p>
+                        <p className="text-[10px] text-neutral-600">skill.md, manifest.json, aios-skill files</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-2 p-3 rounded-lg bg-neutral-900/30 border border-neutral-800">
                       <Sparkles className="h-4 w-4 text-cyan-400 mt-0.5 shrink-0" />
                       <div>
                         <p className="text-[11px] text-neutral-300 font-medium">Auto-Detection</p>
-                        <p className="text-[10px] text-neutral-600">Identifies if it&apos;s a Skill, MCP, or Plugin</p>
+                        <p className="text-[10px] text-neutral-600">Identifies AI agents, plugins, integrations</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-2 p-3 rounded-lg bg-neutral-900/30 border border-neutral-800">
                       <Shield className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
                       <div>
-                        <p className="text-[11px] text-neutral-300 font-medium">Usefulness Score</p>
-                        <p className="text-[10px] text-neutral-600">Stars, activity, docs, license analysis</p>
+                        <p className="text-[11px] text-neutral-300 font-medium">Permission Scan</p>
+                        <p className="text-[10px] text-neutral-600">Extracts required permissions from skill files</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-2 p-3 rounded-lg bg-neutral-900/30 border border-neutral-800">
-                      <AlertCircle className="h-4 w-4 text-orange-400 mt-0.5 shrink-0" />
+                      <CheckCircle2 className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
                       <div>
-                        <p className="text-[11px] text-neutral-300 font-medium">Duplicate Check</p>
-                        <p className="text-[10px] text-neutral-600">Warns if already installed in your system</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Repo Scanning info */}
-                  <div className="pt-2">
-                    <p className="text-[10px] text-neutral-600 text-center mb-2">After verification, you can also:</p>
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-neutral-900/30 border border-neutral-800">
-                      <FileSearch className="h-4 w-4 text-cyan-400 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-[11px] text-neutral-300 font-medium">Scan for Skills in Repo</p>
-                        <p className="text-[10px] text-neutral-600">Find and install individual skill definitions (skill.md, manifest.json, etc.) from the repository</p>
+                        <p className="text-[11px] text-neutral-300 font-medium">Install Status</p>
+                        <p className="text-[10px] text-neutral-600">Shows which skills are already installed</p>
                       </div>
                     </div>
                   </div>

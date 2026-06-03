@@ -8,6 +8,28 @@ export async function POST(
   try {
     const { id } = await params
 
+    // Pre-flight check: verify an AI provider is configured before attempting orchestration
+    try {
+      const { getProviderStatus } = await import('@/lib/providers')
+      const status = await getProviderStatus()
+      // Check if at least one provider is available (has an API key configured)
+      const anyAvailable = Object.values(status).some((s: { available: boolean; keyConfigured: boolean }) => s.available || s.keyConfigured)
+      if (!anyAvailable) {
+        return NextResponse.json(
+          { error: 'No AI provider configured. Please add an API key in AI Models → API Keys to enable orchestration.' },
+          { status: 400 }
+        )
+      }
+    } catch {
+      // If we can't check provider status via the helper, check env vars directly
+      if (!process.env.MISTRAL_API_KEY && !process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY && !process.env.GOOGLE_API_KEY && !process.env.DEEPSEEK_API_KEY && !process.env.XAI_API_KEY && !process.env.OPENROUTER_API_KEY) {
+        return NextResponse.json(
+          { error: 'No AI provider configured. Please add an API key in AI Models → API Keys to enable orchestration.' },
+          { status: 400 }
+        )
+      }
+    }
+
     let runOrchestration: (projectId: string, options?: { skipDocumentation?: boolean; phase?: string }) => Promise<Record<string, unknown>>
     try {
       const mod = await import('@/lib/orchestrator')

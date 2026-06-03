@@ -64,7 +64,7 @@ const AUTONOMY_OPTIONS: AutonomyOption[] = [
 
 const PERMISSIONS: PermissionRow[] = [
   { name: 'Read files', manual: true, assisted: true, semiAuto: true, supervisedAuto: true, fullyAuto: true },
-  { name: 'Disk access', manual: false, assisted: true, semiAuto: true, supervisedAuto: true, fullyAuto: true },
+  { name: 'Disk access', manual: true, assisted: true, semiAuto: true, supervisedAuto: true, fullyAuto: true },
   { name: 'Write files', manual: false, assisted: true, semiAuto: true, supervisedAuto: true, fullyAuto: true },
   { name: 'Execute commands', manual: false, assisted: false, semiAuto: true, supervisedAuto: true, fullyAuto: true },
   { name: 'Network requests', manual: false, assisted: false, semiAuto: true, supervisedAuto: true, fullyAuto: true },
@@ -73,6 +73,7 @@ const PERMISSIONS: PermissionRow[] = [
   { name: 'System configuration', manual: false, assisted: false, semiAuto: false, supervisedAuto: false, fullyAuto: true },
   { name: 'Credential access', manual: false, assisted: false, semiAuto: false, supervisedAuto: false, fullyAuto: true },
   { name: 'Self-modify app', manual: false, assisted: false, semiAuto: false, supervisedAuto: true, fullyAuto: true },
+  { name: 'AI self-access', manual: true, assisted: true, semiAuto: true, supervisedAuto: true, fullyAuto: true },
 ]
 
 const AUDIT_LOG: AuditEntry[] = [

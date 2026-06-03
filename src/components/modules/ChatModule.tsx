@@ -545,7 +545,7 @@ export default function ChatModule() {
       }
     }
 
-    context += `\nThe user can ask you about these projects and you can help them with project management, code review, debugging, task planning, and other project-related activities.`
+    context += `\nThe user can ask you about these projects and you can help them with project management, code review, debugging, task planning, and other project-related activities. When the user asks about their projects, reference the specific project details provided above. You have full visibility into all project metadata including status, priority, tech stack, and task counts.`
 
     return context
   }, [projects, selectedProjectId])
@@ -566,6 +566,9 @@ export default function ChatModule() {
     if (currentModel) {
       effective += `\n\n[Model Context]\nYou are currently running as ${currentModel.name} via ${currentModel.provider}. Adjust your responses accordingly — for example, code-focused models should prioritize code, reasoning models should show step-by-step thinking.`
     }
+
+    // Append AIOS capabilities
+    effective += `\n\n[AIOS Capabilities]\nYou are running inside AIOS (AI Operating System). You have access to the following capabilities:\n- Project management and orchestration\n- Code analysis and review\n- Task planning and assignment\n- Memory and knowledge management\n- GitHub integration\n- Security analysis\n\nWhen the user asks about their projects or tasks, use the project context provided to give informed answers. If they ask about a specific project, focus on that project's details.`
 
     return effective
   }, [systemPrompt, buildProjectContext, selectedModel])

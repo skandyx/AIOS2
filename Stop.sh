@@ -63,8 +63,8 @@ fi
 # Also stop any bun/node processes running on common AIOS ports
 echo -e "${YELLOW}Checking for remaining processes...${NC}"
 
-# Check for processes on port 3000 (Next.js)
-for PORT in 3000 3003; do
+# Check for processes on AIOS ports (3000=Next.js, 3003=WebSocket, 3031=Voice)
+for PORT in 3000 3003 3031; do
   PID=$(lsof -ti:$PORT 2>/dev/null || true)
   if [ -n "$PID" ]; then
     for p in $PID; do

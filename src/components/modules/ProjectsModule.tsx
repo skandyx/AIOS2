@@ -419,7 +419,20 @@ export default function ProjectsModule() {
   // Start orchestration
   const startOrchestration = async () => {
     if (!selectedProjectId) return; setOrchLoading(true)
-    try { await fetch(`/api/projects/${selectedProjectId}/orchestrate`, { method: 'POST' }); fetchOrchStatus(selectedProjectId); fetchProject(selectedProjectId) } catch { /* */ }
+    try {
+      const res = await fetch(`/api/projects/${selectedProjectId}/orchestrate`, { method: 'POST' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Orchestration failed' }))
+        const errorMsg = data.error || 'Orchestration failed'
+        // Update project status to failed so the error banner shows
+        setProject(prev => prev ? { ...prev, orchestratorStatus: 'failed' } : null)
+        console.error('Orchestration error:', errorMsg)
+      }
+      fetchOrchStatus(selectedProjectId); fetchProject(selectedProjectId)
+    } catch (err) {
+      console.error('Orchestration network error:', err)
+      setProject(prev => prev ? { ...prev, orchestratorStatus: 'failed' } : null)
+    }
     finally { setOrchLoading(false) }
   }
 
@@ -577,6 +590,12 @@ export default function ProjectsModule() {
                           {orchConf.label}
                         </Badge>
                       </div>
+                      {orchPhase === 'failed' && (
+                        <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400">
+                          <AlertCircle className="size-3.5 inline mr-1.5 -mt-0.5" />
+                          Orchestrator failed. This usually means no AI API key is configured. Go to <span className="font-semibold">AI Models → API Keys</span> to add one, then retry.
+                        </div>
+                      )}
                       {/* Phase progression */}
                       <div className="space-y-1">
                         <div className="text-[10px] text-slate-500 mb-1">Phase Progression</div>

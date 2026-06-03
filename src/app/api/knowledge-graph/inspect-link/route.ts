@@ -127,7 +127,7 @@ async function fetchViaHttp(url: string): Promise<PageData> {
  * falling back to GitHub API or plain HTTP fetch if ZAI is unavailable.
  */
 async function fetchPageContent(url: string): Promise<PageData> {
-  // Strategy 1: Try ZAI SDK
+  // Strategy 1: Try ZAI SDK (non-blocking - always fall through on failure)
   try {
     const zai = await ZAI.create()
     const result = await zai.functions.invoke('page_reader', { url })
@@ -138,8 +138,8 @@ async function fetchPageContent(url: string): Promise<PageData> {
         publishedTime: result.data.publishedTime || null,
       }
     }
-  } catch (err) {
-    console.warn('ZAI SDK unavailable, using HTTP fallback:', err instanceof Error ? err.message : err)
+  } catch {
+    // ZAI SDK unavailable - this is expected, fall through to next strategy
   }
 
   // Strategy 2: GitHub API for GitHub URLs
@@ -147,8 +147,8 @@ async function fetchPageContent(url: string): Promise<PageData> {
   if (gh) {
     try {
       return await fetchViaGitHubApi(url)
-    } catch (err) {
-      console.warn('GitHub API fallback failed, trying plain HTTP:', err instanceof Error ? err.message : err)
+    } catch {
+      // GitHub API failed, try plain HTTP
     }
   }
 
