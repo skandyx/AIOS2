@@ -20,6 +20,7 @@ import {
   Bot,
   User,
   Cpu,
+  FolderKanban,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -68,6 +69,24 @@ interface ChatResponse {
   conversationId: string
   message: Message
   response: Message
+}
+
+interface ProjectInfo {
+  id: string
+  name: string
+  description: string | null
+  status: string
+  priority: string
+  category: string | null
+  icon: string | null
+  techStack: string | null
+  createdAt: string
+  updatedAt: string
+  _count?: {
+    tasks: number
+    projectSkills: number
+    projectMCPServers: number
+  }
 }
 
 // ─── System Prompt Presets ────────────────────────────────────────────────────
@@ -372,6 +391,8 @@ export default function ChatModule() {
   const [selectedPromptPreset, setSelectedPromptPreset] = useState('Default Assistant')
   const [error, setError] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState('mistral-large-latest')
+  const [projects, setProjects] = useState<ProjectInfo[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -420,6 +441,134 @@ export default function ChatModule() {
   useEffect(() => {
     fetchConversations()
   }, [fetchConversations])
+
+  // ── Fetch projects on mount ──────────────────────────────────────────────────
+
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const res = await fetch('/api/projects')
+        if (res.ok) {
+          const data = await res.json()
+          setProjects(Array.isArray(data) ? data : [])
+        }
+      } catch (err) {
+        console.warn('AIOS: Could not load projects for chat context.', err)
+        setProjects([])
+      }
+    }
+    fetchProjects()
+  }, [])
+
+  // ── Build project context for system prompt ──────────────────────────────────
+
+  const buildProjectContext = useCallback((): string => {
+    if (projects.length === 0) return ''
+
+    const selectedProject = selectedProjectId
+      ? projects.find((p) => p.id === selectedProjectId)
+      : null
+
+    const statusLabel = (s: string) => {
+      const map: Record<string, string> = {
+        planning: 'Planning',
+        in_progress: 'In Progress',
+        on_hold: 'On Hold',
+        completed: 'Completed',
+        archived: 'Archived',
+      }
+      return map[s] || s
+    }
+
+    const priorityLabel = (p: string) => {
+      const map: Record<string, string> = {
+        low: 'Low',
+        medium: 'Medium',
+        high: 'High',
+        critical: 'Critical',
+      }
+      return map[p] || p
+    }
+
+    let context = '\n\n[Project Context]\nYou have access to the following projects in AIOS:\n'
+
+    for (const project of projects) {
+      const taskCount = project._count?.tasks ?? 0
+      const isSelected = project.id === selectedProjectId
+
+      context += `\n- Project: "${project.name}" (Status: ${statusLabel(project.status)}, Priority: ${priorityLabel(project.priority)}, Created: ${new Date(project.createdAt).toLocaleDateString()})\n`
+      if (project.description) {
+        context += `  Description: ${project.description}\n`
+      }
+      if (project.category) {
+        context += `  Category: ${project.category}\n`
+      }
+      if (project.techStack) {
+        try {
+          const stack = JSON.parse(project.techStack)
+          if (Array.isArray(stack) && stack.length > 0) {
+            context += `  Tech Stack: ${stack.join(', ')}\n`
+          }
+        } catch {
+          context += `  Tech Stack: ${project.techStack}\n`
+        }
+      }
+      context += `  Tasks: ${taskCount} total\n`
+
+      if (isSelected) {
+        context += `  ★ THIS IS THE CURRENTLY SELECTED PROJECT\n`
+      }
+    }
+
+    if (selectedProject) {
+      const taskCount = selectedProject._count?.tasks ?? 0
+      const skillCount = selectedProject._count?.projectSkills ?? 0
+      const mcpCount = selectedProject._count?.projectMCPServers ?? 0
+      context += `\nCurrently selected project: "${selectedProject.name}"\n`
+      context += `  - Status: ${statusLabel(selectedProject.status)}\n`
+      context += `  - Priority: ${priorityLabel(selectedProject.priority)}\n`
+      if (selectedProject.description) {
+        context += `  - Description: ${selectedProject.description}\n`
+      }
+      context += `  - Tasks: ${taskCount} total\n`
+      context += `  - Skills attached: ${skillCount}\n`
+      context += `  - MCP Servers attached: ${mcpCount}\n`
+      if (selectedProject.techStack) {
+        try {
+          const stack = JSON.parse(selectedProject.techStack)
+          if (Array.isArray(stack) && stack.length > 0) {
+            context += `  - Tech Stack: ${stack.join(', ')}\n`
+          }
+        } catch {
+          context += `  - Tech Stack: ${selectedProject.techStack}\n`
+        }
+      }
+    }
+
+    context += `\nThe user can ask you about these projects and you can help them with project management, code review, debugging, task planning, and other project-related activities.`
+
+    return context
+  }, [projects, selectedProjectId])
+
+  // ── Build effective system prompt (base + context + model info) ──────────────
+
+  const buildEffectiveSystemPrompt = useCallback((): string => {
+    let effective = systemPrompt
+
+    // Append project context
+    const projectCtx = buildProjectContext()
+    if (projectCtx) {
+      effective += projectCtx
+    }
+
+    // Append current model awareness
+    const currentModel = AVAILABLE_MODELS.find((m) => m.id === selectedModel)
+    if (currentModel) {
+      effective += `\n\n[Model Context]\nYou are currently running as ${currentModel.name} via ${currentModel.provider}. Adjust your responses accordingly — for example, code-focused models should prioritize code, reasoning models should show step-by-step thinking.`
+    }
+
+    return effective
+  }, [systemPrompt, buildProjectContext, selectedModel])
 
   // ── Fetch messages when conversation selected ─────────────────────────────
 
@@ -496,7 +645,7 @@ export default function ChatModule() {
           body: JSON.stringify({
             message: trimmed,
             conversationId: selectedConversationId,
-            systemPrompt,
+            systemPrompt: buildEffectiveSystemPrompt(),
             model: selectedModel || undefined,
           }),
           signal: controller.signal,
@@ -551,6 +700,7 @@ export default function ChatModule() {
     setMessages([])
     setSystemPrompt('You are a helpful AI assistant.')
     setSelectedPromptPreset('Default Assistant')
+    setSelectedProjectId(null)
     inputRef.current?.focus()
   }
 
@@ -713,9 +863,19 @@ export default function ChatModule() {
                     />
                   </div>
                   <div className="bg-gray-800/50 rounded-lg p-3 border border-white/5">
-                    <p className="text-xs text-gray-400 mb-1">Active prompt:</p>
-                    <p className="text-xs text-cyan-300/80 line-clamp-3">{systemPrompt}</p>
+                    <p className="text-xs text-gray-400 mb-1">Active prompt (with project &amp; model context):</p>
+                    <p className="text-xs text-cyan-300/80 line-clamp-5 whitespace-pre-wrap">{buildEffectiveSystemPrompt()}</p>
                   </div>
+                  {projects.length > 0 && (
+                    <div className="bg-cyan-500/5 rounded-lg p-3 border border-cyan-500/10">
+                      <p className="text-xs text-cyan-400 mb-1">📊 Project context is enabled</p>
+                      <p className="text-xs text-gray-400">
+                        {selectedProjectId
+                          ? `Focused on: ${projects.find(p => p.id === selectedProjectId)?.name || 'Unknown'}`
+                          : `${projects.length} project(s) available — select one above for detailed context`}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </DialogContent>
             </Dialog>
@@ -735,6 +895,25 @@ export default function ChatModule() {
                 ))}
               </select>
             </div>
+
+            {/* Project Context Selector */}
+            {projects.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <FolderKanban className="size-3.5 text-neutral-500 hidden sm:block" />
+                <select
+                  value={selectedProjectId || ''}
+                  onChange={(e) => setSelectedProjectId(e.target.value || null)}
+                  className="bg-gray-900 border border-white/10 text-[11px] text-neutral-300 rounded-md px-2 py-1 h-7 outline-none cursor-pointer hover:border-cyan-500/30 focus:border-cyan-500/50 transition-colors max-w-[140px] sm:max-w-none"
+                >
+                  <option value="">No project</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.icon ? `${p.icon} ` : ''}{p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <Badge variant="outline" className="text-[10px] border-cyan-500/30 text-cyan-400 bg-cyan-500/10 hidden sm:inline-flex">
               AI OS

@@ -7,6 +7,7 @@ const DEFAULT_SECURITY_SETTINGS = {
   autonomyLevel: 'assisted' as const,
   permissions: [
     { name: 'Read files', manual: true, assisted: true, semiAuto: true, supervisedAuto: true, fullyAuto: true },
+    { name: 'Disk access', manual: false, assisted: true, semiAuto: true, supervisedAuto: true, fullyAuto: true },
     { name: 'Write files', manual: false, assisted: true, semiAuto: true, supervisedAuto: true, fullyAuto: true },
     { name: 'Execute commands', manual: false, assisted: false, semiAuto: true, supervisedAuto: true, fullyAuto: true },
     { name: 'Network requests', manual: false, assisted: false, semiAuto: true, supervisedAuto: true, fullyAuto: true },
@@ -14,6 +15,7 @@ const DEFAULT_SECURITY_SETTINGS = {
     { name: 'Delete files', manual: false, assisted: false, semiAuto: false, supervisedAuto: true, fullyAuto: true },
     { name: 'System configuration', manual: false, assisted: false, semiAuto: false, supervisedAuto: false, fullyAuto: true },
     { name: 'Credential access', manual: false, assisted: false, semiAuto: false, supervisedAuto: false, fullyAuto: true },
+    { name: 'Self-modify app', manual: false, assisted: false, semiAuto: false, supervisedAuto: true, fullyAuto: true },
   ],
   dangerActions: [
     'Delete files or directories',

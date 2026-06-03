@@ -64,6 +64,7 @@ const AUTONOMY_OPTIONS: AutonomyOption[] = [
 
 const PERMISSIONS: PermissionRow[] = [
   { name: 'Read files', manual: true, assisted: true, semiAuto: true, supervisedAuto: true, fullyAuto: true },
+  { name: 'Disk access', manual: false, assisted: true, semiAuto: true, supervisedAuto: true, fullyAuto: true },
   { name: 'Write files', manual: false, assisted: true, semiAuto: true, supervisedAuto: true, fullyAuto: true },
   { name: 'Execute commands', manual: false, assisted: false, semiAuto: true, supervisedAuto: true, fullyAuto: true },
   { name: 'Network requests', manual: false, assisted: false, semiAuto: true, supervisedAuto: true, fullyAuto: true },
@@ -71,6 +72,7 @@ const PERMISSIONS: PermissionRow[] = [
   { name: 'Delete files', manual: false, assisted: false, semiAuto: false, supervisedAuto: true, fullyAuto: true },
   { name: 'System configuration', manual: false, assisted: false, semiAuto: false, supervisedAuto: false, fullyAuto: true },
   { name: 'Credential access', manual: false, assisted: false, semiAuto: false, supervisedAuto: false, fullyAuto: true },
+  { name: 'Self-modify app', manual: false, assisted: false, semiAuto: false, supervisedAuto: true, fullyAuto: true },
 ]
 
 const AUDIT_LOG: AuditEntry[] = [
@@ -448,6 +450,46 @@ export default function SecurityModule() {
             </CardContent>
           </Card>
 
+          {/* Current Effective Permissions */}
+          <Card className="bg-[#0d1117] border-cyan-900/30">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-semibold text-cyan-400 flex items-center gap-2">
+                <ShieldCheck className="size-3.5" />
+                Currently Allowed ({selectedLevel.replace('_', ' ')})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-1.5">
+                {PERMISSIONS.filter(perm => {
+                  const levelKey = selectedLevel === 'manual' ? 'manual'
+                    : selectedLevel === 'assisted' ? 'assisted'
+                    : selectedLevel === 'semi_autonomous' ? 'semiAuto'
+                    : selectedLevel === 'supervised_autonomous' ? 'supervisedAuto'
+                    : 'fullyAuto'
+                  return perm[levelKey as keyof PermissionRow] as boolean
+                }).map(perm => (
+                  <Badge key={perm.name} variant="outline" className="text-[10px] border-green-500/30 text-green-400 bg-green-500/10">
+                    <CheckCircle2 className="size-2.5 mr-1" />
+                    {perm.name}
+                  </Badge>
+                ))}
+                {PERMISSIONS.filter(perm => {
+                  const levelKey = selectedLevel === 'manual' ? 'manual'
+                    : selectedLevel === 'assisted' ? 'assisted'
+                    : selectedLevel === 'semi_autonomous' ? 'semiAuto'
+                    : selectedLevel === 'supervised_autonomous' ? 'supervisedAuto'
+                    : 'fullyAuto'
+                  return !(perm[levelKey as keyof PermissionRow] as boolean)
+                }).map(perm => (
+                  <Badge key={perm.name} variant="outline" className="text-[10px] border-neutral-700/50 text-neutral-600 bg-neutral-800/50">
+                    <XCircle className="size-2.5 mr-1" />
+                    {perm.name}
+                  </Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Sandbox & Vault Status */}
           <div className="grid grid-cols-2 gap-3">
             <Card className="bg-[#0d1117] border-neutral-800">
@@ -455,7 +497,7 @@ export default function SecurityModule() {
                 <Server className="size-5 text-emerald-400" />
                 <span className="text-xs font-semibold text-neutral-200">Sandbox</span>
                 <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
-                  2 Active
+                  Active
                 </Badge>
               </CardContent>
             </Card>
@@ -464,7 +506,7 @@ export default function SecurityModule() {
                 <Key className="size-5 text-amber-400" />
                 <span className="text-xs font-semibold text-neutral-200">Vault</span>
                 <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-400 bg-amber-500/10">
-                  8 Keys
+                  Secured
                 </Badge>
               </CardContent>
             </Card>

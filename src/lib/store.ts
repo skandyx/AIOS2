@@ -187,10 +187,29 @@ interface AIOSStore {
 
 // ─── Store Implementation ───────────────────────────────────────────────────
 
+// Persist activeModule to localStorage so it survives page refreshes / HMR
+function getPersistedModule(): AIModule {
+  if (typeof window === 'undefined') return 'dashboard'
+  try {
+    const stored = localStorage.getItem('aios-active-module')
+    if (stored && [
+      'dashboard', 'chat', 'agents', 'memory', 'workflows', 'monitoring',
+      'plugins', 'models', 'terminal', 'security', 'integrations', 'voice',
+      'skills', 'mcp', 'projects', 'knowledge-graph'
+    ].includes(stored)) {
+      return stored as AIModule
+    }
+  } catch {}
+  return 'dashboard'
+}
+
 export const useAIOSStore = create<AIOSStore>((set) => ({
   // Navigation
-  activeModule: "dashboard",
-  setActiveModule: (module) => set({ activeModule: module }),
+  activeModule: getPersistedModule(),
+  setActiveModule: (module) => {
+    try { localStorage.setItem('aios-active-module', module) } catch {}
+    set({ activeModule: module })
+  },
 
   // Chat
   conversations: [],

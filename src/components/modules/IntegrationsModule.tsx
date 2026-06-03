@@ -35,6 +35,11 @@ import {
   Workflow,
   Sparkles,
   Save,
+  Loader2,
+  Key,
+  User,
+  Wifi,
+  WifiOff,
 } from 'lucide-react'
 
 type IntegrationStatus = 'connected' | 'disconnected' | 'error' | 'pending_auth'
@@ -53,6 +58,8 @@ interface Integration {
   category: IntegrationCategory
   url?: string
   isFree?: boolean
+  apiKey?: string
+  integrationId?: string
 }
 
 const INTEGRATIONS: Integration[] = [
@@ -103,32 +110,148 @@ export default function IntegrationsModule() {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [editName, setEditName] = useState('')
   const [editUrl, setEditUrl] = useState('')
+  const [editApiKey, setEditApiKey] = useState('')
+  const [editUsername, setEditUsername] = useState('')
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [loadingStatus, setLoadingStatus] = useState(false)
+  const [maskedApiKey, setMaskedApiKey] = useState<string | null>(null)
   const { toast } = useToast()
 
   const openConfigDialog = useCallback((integration: Integration) => {
     setSelectedIntegration(integration)
     setEditName(integration.name)
     setEditUrl(integration.url || '')
+    setEditApiKey('')
+    setEditUsername('')
+    setTestResult(null)
+    setMaskedApiKey(null)
     setConfigDialogOpen(true)
+
+    // For GitHub, fetch current status to see if token is already configured
+    if (integration.type === 'github') {
+      setLoadingStatus(true)
+      fetch('/api/github')
+        .then(res => res.json())
+        .then(data => {
+          if (data.configured && data.username) {
+            setEditUsername(data.username)
+          }
+          if (data.configured) {
+            // Show masked version to indicate a token exists
+            setMaskedApiKey('••••••••••••••••')
+          }
+        })
+        .catch(() => {
+          // Silently ignore - not critical
+        })
+        .finally(() => setLoadingStatus(false))
+    }
   }, [])
 
-  const handleSaveIntegration = useCallback(() => {
+  const handleSaveIntegration = useCallback(async () => {
     if (!selectedIntegration) return
 
-    setIntegrations(prev => prev.map(int => {
-      if (int.id === selectedIntegration.id) {
-        return { ...int, name: editName, url: editUrl || undefined }
+    setSaving(true)
+
+    try {
+      if (selectedIntegration.type === 'github') {
+        // For GitHub, POST to /api/github with token and username
+        if (editApiKey) {
+          const res = await fetch('/api/github', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: editApiKey, username: editUsername }),
+          })
+
+          const data = await res.json()
+
+          if (!res.ok) {
+            toast({
+              title: 'Save failed',
+              description: data.error || data.details || 'Failed to save GitHub configuration',
+              variant: 'destructive',
+            })
+            setSaving(false)
+            return
+          }
+
+          setIntegrations(prev => prev.map(int => {
+            if (int.id === selectedIntegration.id) {
+              return {
+                ...int,
+                name: editName,
+                url: editUrl || undefined,
+                status: 'connected' as IntegrationStatus,
+                lastSync: 'Just now',
+                apiKey: editApiKey ? '••••••••' : undefined,
+                integrationId: data.integrationId,
+              }
+            }
+            return int
+          }))
+        } else {
+          // No new token provided, just update name/URL locally
+          setIntegrations(prev => prev.map(int => {
+            if (int.id === selectedIntegration.id) {
+              return { ...int, name: editName, url: editUrl || undefined }
+            }
+            return int
+          }))
+        }
+      } else {
+        // For other integrations, use PUT /api/integrations if we have an integrationId,
+        // otherwise store in localStorage
+        if (editApiKey && selectedIntegration.integrationId) {
+          await fetch('/api/integrations', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: selectedIntegration.integrationId,
+              name: editName,
+              apiKey: editApiKey,
+              webhookUrl: editUrl || undefined,
+            }),
+          })
+        } else if (editApiKey) {
+          // Store in localStorage for non-GitHub integrations without a DB record
+          const stored = JSON.parse(localStorage.getItem('aios_integration_creds') || '{}')
+          stored[selectedIntegration.type] = { apiKey: editApiKey, username: editUsername }
+          localStorage.setItem('aios_integration_creds', JSON.stringify(stored))
+        }
+
+        setIntegrations(prev => prev.map(int => {
+          if (int.id === selectedIntegration.id) {
+            return {
+              ...int,
+              name: editName,
+              url: editUrl || undefined,
+              status: editApiKey ? 'connected' as IntegrationStatus : int.status,
+              lastSync: editApiKey ? 'Just now' : int.lastSync,
+              apiKey: editApiKey ? '••••••••' : undefined,
+            }
+          }
+          return int
+        }))
       }
-      return int
-    }))
 
-    toast({
-      title: 'Integration saved',
-      description: `${editName} configuration has been updated.`,
-    })
+      toast({
+        title: 'Integration saved',
+        description: `${editName} configuration has been updated.`,
+      })
 
-    setConfigDialogOpen(false)
-  }, [selectedIntegration, editName, editUrl, toast])
+      setConfigDialogOpen(false)
+    } catch (error) {
+      toast({
+        title: 'Save failed',
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+        variant: 'destructive',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }, [selectedIntegration, editName, editUrl, editApiKey, editUsername, toast])
 
   const automationPlatforms = integrations.filter(i => i.category === 'automation')
   const regularIntegrations = integrations.filter(i => i.category !== 'automation')
@@ -152,7 +275,19 @@ export default function IntegrationsModule() {
   const connectedCount = integrations.filter(i => i.status === 'connected').length
   const errorCount = integrations.filter(i => i.status === 'error').length
 
-  const toggleConnection = useCallback((id: string) => {
+  const toggleConnection = useCallback(async (id: string) => {
+    const integration = integrations.find(i => i.id === id)
+    if (!integration) return
+
+    if (integration.type === 'github' && integration.status === 'connected') {
+      // Disconnect GitHub via API
+      try {
+        await fetch('/api/github', { method: 'DELETE' })
+      } catch {
+        // Silently continue with local state update
+      }
+    }
+
     setIntegrations(prev => prev.map(int => {
       if (int.id === id) {
         const newStatus: IntegrationStatus = int.status === 'connected' ? 'disconnected' : 'connected'
@@ -160,7 +295,7 @@ export default function IntegrationsModule() {
       }
       return int
     }))
-  }, [])
+  }, [integrations])
 
   const getStatusColor = (status: IntegrationStatus) => {
     switch (status) {
@@ -597,6 +732,9 @@ export default function IntegrationsModule() {
                     Free &amp; Open Source
                   </Badge>
                 )}
+                {loadingStatus && (
+                  <Loader2 className="size-3.5 animate-spin text-neutral-500" />
+                )}
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-medium text-neutral-400">Name</label>
@@ -606,6 +744,43 @@ export default function IntegrationsModule() {
                   className="bg-neutral-900 border-neutral-700 text-sm"
                 />
               </div>
+              {/* API Key / Token field - shown for all integrations */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-neutral-400 flex items-center gap-1.5">
+                  <Key className="size-3" />
+                  API Key / Token
+                  {maskedApiKey && !editApiKey && (
+                    <Badge variant="outline" className="text-[8px] border-green-500/30 text-green-400 bg-green-500/10 px-1.5 py-0 ml-1">
+                      Configured
+                    </Badge>
+                  )}
+                </label>
+                <Input
+                  type="password"
+                  value={editApiKey}
+                  onChange={e => setEditApiKey(e.target.value)}
+                  placeholder={maskedApiKey ? 'Enter new token to replace existing' : selectedIntegration.type === 'github' ? 'ghp_xxxxxxxxxxxxxxxxxxxx' : 'Enter API key or token'}
+                  className="bg-neutral-900 border-neutral-700 text-sm font-mono"
+                />
+                {maskedApiKey && !editApiKey && (
+                  <p className="text-[10px] text-neutral-600">A token is already configured. Leave blank to keep the existing one.</p>
+                )}
+              </div>
+              {/* Username field - shown for GitHub */}
+              {selectedIntegration.type === 'github' && (
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-neutral-400 flex items-center gap-1.5">
+                    <User className="size-3" />
+                    GitHub Username
+                  </label>
+                  <Input
+                    value={editUsername}
+                    onChange={e => setEditUsername(e.target.value)}
+                    placeholder="your-username"
+                    className="bg-neutral-900 border-neutral-700 text-sm font-mono"
+                  />
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="text-xs font-medium text-neutral-400">
                   {selectedIntegration.isFree ? 'Platform URL' : 'Webhook URL'}
@@ -617,6 +792,87 @@ export default function IntegrationsModule() {
                   className="bg-neutral-900 border-neutral-700 text-sm"
                 />
               </div>
+              {/* Test Connection button - shown for GitHub */}
+              {selectedIntegration.type === 'github' && (
+                <div className="space-y-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full border-neutral-700 text-neutral-300 hover:bg-neutral-800 gap-1.5"
+                    onClick={async () => {
+                      setTesting(true)
+                      setTestResult(null)
+                      try {
+                        // If a new token was entered, first save it
+                        if (editApiKey) {
+                          const saveRes = await fetch('/api/github', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ token: editApiKey, username: editUsername }),
+                          })
+                          if (!saveRes.ok) {
+                            const errData = await saveRes.json()
+                            setTestResult({ success: false, message: errData.error || errData.details || 'Failed to save token' })
+                            setTesting(false)
+                            return
+                          }
+                          setEditApiKey('')
+                          setMaskedApiKey('••••••••••••••••')
+                        }
+
+                        const res = await fetch('/api/github/status')
+                        const data = await res.json()
+
+                        if (data.connected && data.authenticated) {
+                          setTestResult({
+                            success: true,
+                            message: `Connected as @${data.user?.login || 'unknown'}${data.rateLimit ? ` — ${data.rateLimit.remaining}/${data.rateLimit.limit} API calls remaining` : ''}`,
+                          })
+                          if (data.user?.login) {
+                            setEditUsername(data.user.login)
+                          }
+                          // Update the integration status
+                          setIntegrations(prev => prev.map(int => {
+                            if (int.id === selectedIntegration.id) {
+                              return { ...int, status: 'connected', lastSync: 'Just now' }
+                            }
+                            return int
+                          }))
+                        } else {
+                          setTestResult({
+                            success: false,
+                            message: data.message || 'Connection failed — check your token',
+                          })
+                        }
+                      } catch (err) {
+                        setTestResult({
+                          success: false,
+                          message: err instanceof Error ? err.message : 'Connection test failed',
+                        })
+                      } finally {
+                        setTesting(false)
+                      }
+                    }}
+                    disabled={testing || (!editApiKey && !maskedApiKey)}
+                  >
+                    {testing ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : testResult?.success ? (
+                      <Wifi className="size-3.5 text-green-400" />
+                    ) : testResult && !testResult.success ? (
+                      <WifiOff className="size-3.5 text-red-400" />
+                    ) : (
+                      <Wifi className="size-3.5" />
+                    )}
+                    {testing ? 'Testing...' : 'Test Connection'}
+                  </Button>
+                  {testResult && (
+                    <p className={`text-[11px] ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>
+                      {testResult.message}
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="text-xs font-medium text-neutral-400">Capabilities</label>
                 <div className="flex flex-wrap gap-1.5">
@@ -656,9 +912,9 @@ export default function IntegrationsModule() {
             <DialogClose asChild>
               <Button variant="ghost" size="sm" className="text-neutral-400">Cancel</Button>
             </DialogClose>
-            <Button size="sm" className="bg-cyan-600 hover:bg-cyan-700 text-white gap-1.5" onClick={handleSaveIntegration}>
-              <Save className="size-3.5" />
-              Save Changes
+            <Button size="sm" className="bg-cyan-600 hover:bg-cyan-700 text-white gap-1.5" onClick={handleSaveIntegration} disabled={saving}>
+              {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+              {saving ? 'Saving...' : 'Save Changes'}
             </Button>
           </DialogFooter>
         </DialogContent>
