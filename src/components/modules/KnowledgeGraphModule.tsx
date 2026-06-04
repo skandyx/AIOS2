@@ -57,6 +57,8 @@ import {
   ArrowDown,
   ArrowUp,
   Filter,
+  Wrench,
+  FileCode,
 } from 'lucide-react'
 
 // Dynamic import for ForceGraph2D (uses canvas, needs SSR disabled)
@@ -227,6 +229,7 @@ export default function KnowledgeGraphModule() {
   const [inspectResult, setInspectResult] = useState<{ url: string; title: string; links: string[]; content: string } | null>(null)
   const [showInspectDialog, setShowInspectDialog] = useState(false)
   const [inspectError, setInspectError] = useState<string | null>(null)
+  const [selectedIssue, setSelectedIssue] = useState<AnalysisIssue | null>(null)
 
   // ─── Refs ───────────────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null)
@@ -1088,7 +1091,7 @@ export default function KnowledgeGraphModule() {
 
         {/* ─── Analysis Panel ──────────────────────────────────────────────── */}
         {showAnalysisPanel && (
-          <div className="w-96 border-l border-neutral-800 bg-[#0d1117] flex flex-col shrink-0">
+          <div className="w-96 border-l border-neutral-800 bg-[#0d1117] flex flex-col shrink-0 h-full max-h-screen">
             <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
               <span className="text-sm font-medium text-white flex items-center gap-2">
                 <AlertTriangle className="size-4 text-amber-400" />
@@ -1131,7 +1134,7 @@ export default function KnowledgeGraphModule() {
             </div>
 
             {/* Issues List */}
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 overflow-hidden">
               {analyzing ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Loader2 className="size-6 text-cyan-400 animate-spin mb-3" />
@@ -1157,6 +1160,7 @@ export default function KnowledgeGraphModule() {
                         key={issue.id}
                         className="bg-neutral-900 border-neutral-800 hover:border-cyan-500/30 transition-colors cursor-pointer py-0"
                         onClick={() => {
+                          setSelectedIssue(selectedIssue?.id === issue.id ? null : issue)
                           if (issue.nodeId) {
                             const node = graphData?.nodes.find(n => n.id === issue.nodeId)
                             if (node) setSelectedNode(node)
@@ -1185,17 +1189,58 @@ export default function KnowledgeGraphModule() {
                                   {issue.lineEnd && `-${issue.lineEnd}`}
                                 </p>
                               )}
-                              {issue.suggestion && (
-                                <div className="mt-1.5 bg-cyan-500/5 border border-cyan-500/10 rounded px-2 py-1">
-                                  <p className="text-[10px] text-cyan-300">
-                                    <Sparkles className="size-2.5 inline mr-1" />
-                                    {issue.suggestion}
-                                  </p>
-                                </div>
-                              )}
                             </div>
                           </div>
                         </CardContent>
+                        {selectedIssue?.id === issue.id && (
+                          <div className="px-3 pb-3 pt-1 border-t border-neutral-800 space-y-2">
+                            {issue.suggestion && (
+                              <div className="bg-cyan-500/5 border border-cyan-500/10 rounded px-2 py-1.5">
+                                <p className="text-[10px] text-cyan-300 font-medium mb-1">
+                                  <Sparkles className="size-2.5 inline mr-1" />
+                                  Suggested Fix
+                                </p>
+                                <p className="text-[10px] text-slate-300 whitespace-pre-wrap">{issue.suggestion}</p>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2">
+                              <Button size="sm" className="h-6 text-[9px] gap-1 bg-cyan-600 hover:bg-cyan-700 text-white"
+                                onClick={async (e) => {
+                                  e.stopPropagation()
+                                  if (!selectedProjectId) return
+                                  try {
+                                    await fetch(`/api/projects/${selectedProjectId}/tasks`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        title: `Fix: ${issue.title}`,
+                                        description: `${issue.description}\n\nSuggested fix: ${issue.suggestion || 'Review and fix the issue manually.'}\n\nFile: ${issue.filePath || 'Unknown'}${issue.lineStart ? `:${issue.lineStart}` : ''}`,
+                                        status: 'pending',
+                                        priority: issue.severity === 'critical' ? 'critical' : issue.severity === 'high' ? 'high' : 'medium',
+                                        type: 'bug',
+                                        agentType: 'developer',
+                                      }),
+                                    })
+                                  } catch { /* */ }
+                                }}>
+                                <Wrench className="size-2.5" /> Create Fix Task
+                              </Button>
+                              {issue.filePath && (
+                                <Button size="sm" variant="outline" className="h-6 text-[9px] gap-1 border-neutral-700 text-slate-300"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    const fileNode = graphData?.nodes.find(n => n.path === issue.filePath || n.name === issue.filePath?.split('/').pop())
+                                    if (fileNode) {
+                                      setSelectedNode(fileNode)
+                                      setHighlightedNodes(new Set([fileNode.id]))
+                                    }
+                                  }}>
+                                  <FileCode className="size-2.5" /> View File
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </Card>
                     )
                   })}

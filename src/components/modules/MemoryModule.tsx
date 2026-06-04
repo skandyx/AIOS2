@@ -54,6 +54,7 @@ import {
   Database,
   TrendingUp,
   Filter,
+  Pencil,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -116,157 +117,7 @@ const MEMORY_TABS: { value: MemoryType; label: string }[] = [
   { value: 'skill', label: 'Skill' },
 ]
 
-// Mock data fallback
-const MOCK_MEMORIES: MemoryData[] = [
-  {
-    id: 'mem-1',
-    type: 'long_term',
-    key: 'user.preferences.theme',
-    value: 'User prefers dark theme with cyan accents. High contrast mode enabled. Font size: 16px.',
-    summary: 'User visual preferences',
-    importance: 0.9,
-    accessCount: 45,
-    source: 'conversation',
-    context: JSON.stringify({ sessionId: 'sess-001' }),
-    isArchived: false,
-    createdAt: new Date(Date.now() - 86400000 * 7).toISOString(),
-    updatedAt: new Date(Date.now() - 3600000).toISOString(),
-  },
-  {
-    id: 'mem-2',
-    type: 'short_term',
-    key: 'conversation.current_topic',
-    value: 'Currently discussing multi-agent orchestration patterns and their implementation in Next.js',
-    importance: 0.7,
-    accessCount: 12,
-    source: 'conversation',
-    isArchived: false,
-    createdAt: new Date(Date.now() - 1800000).toISOString(),
-    updatedAt: new Date(Date.now() - 300000).toISOString(),
-  },
-  {
-    id: 'mem-3',
-    type: 'procedural',
-    key: 'workflow.deploy_pipeline',
-    value: 'Step 1: Run tests. Step 2: Build. Step 3: Deploy to staging. Step 4: Run smoke tests. Step 5: Deploy to production.',
-    summary: 'Standard deployment pipeline procedure',
-    importance: 0.85,
-    accessCount: 32,
-    source: 'workflow',
-    isArchived: false,
-    createdAt: new Date(Date.now() - 86400000 * 14).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: 'mem-4',
-    type: 'contextual',
-    key: 'project.react_patterns',
-    value: 'Project uses Next.js 16 App Router with server components. State management via Zustand and TanStack Query. UI library: shadcn/ui.',
-    summary: 'Project technical stack details',
-    importance: 0.75,
-    accessCount: 28,
-    source: 'task',
-    isArchived: false,
-    createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-  },
-  {
-    id: 'mem-5',
-    type: 'user',
-    key: 'user.name',
-    value: 'Default User. Email: default@ai-os.local. Role: Administrator.',
-    importance: 0.95,
-    accessCount: 67,
-    source: 'system',
-    isArchived: false,
-    createdAt: new Date(Date.now() - 86400000 * 30).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: 'mem-6',
-    type: 'system',
-    key: 'system.version',
-    value: 'AI OS v2.1.0. Last maintenance: 2024-01-15. Next scheduled: 2024-02-01.',
-    importance: 0.6,
-    accessCount: 8,
-    source: 'system',
-    isArchived: false,
-    createdAt: new Date(Date.now() - 86400000 * 20).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000 * 5).toISOString(),
-  },
-  {
-    id: 'mem-7',
-    type: 'error',
-    key: 'error.auth_token_expired',
-    value: 'Authentication token expired at 2024-01-20T14:30:00Z. User was re-authenticated automatically. No data loss.',
-    importance: 0.5,
-    accessCount: 3,
-    source: 'system',
-    isArchived: false,
-    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-  },
-  {
-    id: 'mem-8',
-    type: 'workflow',
-    key: 'workflow.code_review',
-    value: 'Code review workflow: Lint check → Type check → Security scan → Peer review → Merge approval. Current status: Active.',
-    importance: 0.8,
-    accessCount: 22,
-    source: 'workflow',
-    isArchived: false,
-    createdAt: new Date(Date.now() - 86400000 * 10).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-  },
-  {
-    id: 'mem-9',
-    type: 'skill',
-    key: 'skill.react_development',
-    value: 'Proficient in React, Next.js, TypeScript. Can generate components, hooks, and full-stack features. Strength: Performance optimization.',
-    importance: 0.9,
-    accessCount: 51,
-    source: 'manual',
-    isArchived: false,
-    createdAt: new Date(Date.now() - 86400000 * 25).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-  },
-  {
-    id: 'mem-10',
-    type: 'project',
-    key: 'project.ai_os_architecture',
-    value: 'Multi-agent architecture with 14 specialized agents. Coordinator agent handles task distribution. Memory system supports 10 types.',
-    importance: 0.88,
-    accessCount: 38,
-    source: 'task',
-    isArchived: false,
-    createdAt: new Date(Date.now() - 86400000 * 12).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-  },
-  {
-    id: 'mem-11',
-    type: 'contextual',
-    key: 'context.current_sprint',
-    value: 'Sprint 4: Focus on agent orchestration and memory management modules. Deadline: End of week.',
-    importance: 0.72,
-    accessCount: 15,
-    source: 'manual',
-    isArchived: false,
-    createdAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-    updatedAt: new Date(Date.now() - 43200000).toISOString(),
-  },
-  {
-    id: 'mem-12',
-    type: 'long_term',
-    key: 'user.communication_style',
-    value: 'User prefers concise, technical explanations. Uses bullet points. Prefers dark-themed UIs. Language: English.',
-    importance: 0.85,
-    accessCount: 40,
-    source: 'conversation',
-    isArchived: false,
-    createdAt: new Date(Date.now() - 86400000 * 18).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-  },
-]
+
 
 // ─── Importance Visualization ─────────────────────────────────────────────────
 
@@ -312,11 +163,13 @@ function MemoryCard({
   isExpanded,
   onToggle,
   onDelete,
+  onEdit,
 }: {
   memory: MemoryData
   isExpanded: boolean
   onToggle: () => void
   onDelete: () => void
+  onEdit: () => void
 }) {
   const typeConfig = MEMORY_TYPE_CONFIG[memory.type] || MEMORY_TYPE_CONFIG.system
 
@@ -353,6 +206,24 @@ function MemoryCard({
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="size-7 text-slate-500 hover:text-cyan-400"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onEdit()
+                    }}
+                  >
+                    <Pencil className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="bg-slate-800 text-white border-slate-600">Edit memory</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     className="size-7 text-slate-500 hover:text-red-400"
                     onClick={(e) => {
                       e.stopPropagation()
@@ -378,6 +249,12 @@ function MemoryCard({
         <p className={`text-xs text-slate-300 ${isExpanded ? '' : 'line-clamp-2'}`}>
           {memory.value}
         </p>
+
+        {/* Importance progress bar - always visible */}
+        <div className="flex items-center gap-2 mt-2">
+          <Progress value={memory.importance * 100} className="h-1 flex-1 bg-slate-700" />
+          <span className="text-[10px] text-slate-500">{Math.round(memory.importance * 100)}%</span>
+        </div>
 
         {isExpanded && (
           <div className="mt-3 space-y-3 pt-3 border-t border-slate-700/50">
@@ -467,6 +344,10 @@ export default function MemoryModule() {
     importance: 0.5,
   })
   const [viewMode, setViewMode] = useState<'grid' | 'timeline'>('grid')
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editingMemory, setEditingMemory] = useState<MemoryData | null>(null)
+  const [editForm, setEditForm] = useState({ key: '', content: '', type: 'short_term' as string, importance: 0.5, summary: '' })
+  const [saving, setSaving] = useState(false)
 
   // Fetch memories
   const fetchMemories = useCallback(async () => {
@@ -474,16 +355,12 @@ export default function MemoryModule() {
       const res = await fetch('/api/memory')
       if (res.ok) {
         const data: MemoryData[] = await res.json()
-        if (data.length > 0) {
-          setMemories(data)
-        } else {
-          setMemories(MOCK_MEMORIES)
-        }
+        setMemories(data)
       } else {
-        setMemories(MOCK_MEMORIES)
+        setMemories([])
       }
     } catch {
-      setMemories(MOCK_MEMORIES)
+      setMemories([])
     } finally {
       setLoading(false)
     }
@@ -525,6 +402,41 @@ export default function MemoryModule() {
       }
     } catch {
       // silently fail
+    }
+  }
+
+  // Edit memory
+  const handleOpenEdit = (memory: MemoryData) => {
+    setEditingMemory(memory)
+    setEditForm({ key: memory.key, content: memory.value, type: memory.type, importance: memory.importance, summary: memory.summary || '' })
+    setEditDialogOpen(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingMemory) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/memory?id=${editingMemory.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          key: editForm.key,
+          value: editForm.content,
+          type: editForm.type,
+          importance: editForm.importance,
+          summary: editForm.summary || null,
+        }),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setMemories((prev) => prev.map((m) => m.id === editingMemory.id ? { ...m, ...updated } : m))
+        setEditDialogOpen(false)
+        setEditingMemory(null)
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -747,12 +659,12 @@ export default function MemoryModule() {
       {/* Search + View Toggle */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-cyan-400" />
           <Input
             placeholder="Search memories by key, content, or summary..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 bg-slate-900/60 border-slate-700/50 text-white backdrop-blur-sm placeholder:text-slate-500"
+            className="pl-10 h-10 text-sm bg-slate-900/60 border-cyan-500/30 text-white backdrop-blur-sm placeholder:text-slate-500 focus:border-cyan-500/60"
           />
         </div>
         <div className="flex gap-1 bg-slate-900/60 rounded-lg p-1 border border-slate-700/50">
@@ -834,6 +746,7 @@ export default function MemoryModule() {
                     setExpandedMemory(expandedMemory === memory.id ? null : memory.id)
                   }
                   onDelete={() => handleDeleteMemory(memory.id)}
+                  onEdit={() => handleOpenEdit(memory)}
                 />
               ))}
             </div>
@@ -928,6 +841,82 @@ export default function MemoryModule() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Edit Memory Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="bg-slate-900 border-slate-700 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-cyan-400">Edit Memory</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Update memory content and settings
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="text-slate-300">Key</Label>
+              <Input
+                value={editForm.key}
+                onChange={(e) => setEditForm({ ...editForm, key: e.target.value })}
+                className="bg-slate-800 border-slate-600 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300">Type</Label>
+              <Select
+                value={editForm.type}
+                onValueChange={(v) => setEditForm({ ...editForm, type: v })}
+              >
+                <SelectTrigger className="bg-slate-800 border-slate-600 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-600">
+                  {Object.entries(MEMORY_TYPE_CONFIG).map(([key, config]) => (
+                    <SelectItem key={key} value={key} className="text-white focus:bg-slate-700 focus:text-white">
+                      {config.icon} {config.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300">Content</Label>
+              <Textarea
+                value={editForm.content}
+                onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
+                className="bg-slate-800 border-slate-600 text-white min-h-24"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300">Summary (optional)</Label>
+              <Input
+                value={editForm.summary}
+                onChange={(e) => setEditForm({ ...editForm, summary: e.target.value })}
+                className="bg-slate-800 border-slate-600 text-white"
+                placeholder="Brief description..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300">Importance: {Math.round(editForm.importance * 100)}%</Label>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={editForm.importance * 100}
+                onChange={(e) => setEditForm({ ...editForm, importance: parseInt(e.target.value) / 100 })}
+                className="w-full h-1.5 rounded-lg appearance-none cursor-pointer bg-slate-700 accent-cyan-500"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)} className="border-slate-600 text-slate-300">
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={saving || !editForm.key || !editForm.content} className="bg-cyan-600 hover:bg-cyan-700 text-white">
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
         </div>
       </ScrollArea>
     </div>

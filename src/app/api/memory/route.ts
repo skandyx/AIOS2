@@ -66,6 +66,52 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// PUT /api/memory - Update memory by id
+export async function PUT(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Memory ID is required' },
+        { status: 400 }
+      )
+    }
+
+    const body = await request.json()
+    const { key, value, type, importance, summary } = body
+
+    const existing = await db.memory.findUnique({ where: { id } })
+    if (!existing) {
+      return NextResponse.json(
+        { error: 'Memory not found' },
+        { status: 404 }
+      )
+    }
+
+    const updateData: Record<string, unknown> = {}
+    if (key !== undefined) updateData.key = key
+    if (value !== undefined) updateData.value = value
+    if (type !== undefined) updateData.type = type
+    if (importance !== undefined) updateData.importance = importance
+    if (summary !== undefined) updateData.summary = summary
+
+    const memory = await db.memory.update({
+      where: { id },
+      data: updateData,
+    })
+
+    return NextResponse.json(memory)
+  } catch (error) {
+    console.error('Update memory error:', error)
+    return NextResponse.json(
+      { error: 'Failed to update memory' },
+      { status: 500 }
+    )
+  }
+}
+
 // DELETE /api/memory - Delete memory by id
 export async function DELETE(request: NextRequest) {
   try {

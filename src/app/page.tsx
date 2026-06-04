@@ -280,7 +280,7 @@ export default function AIOSDashboard() {
       }
     };
     checkHealth();
-    const interval = setInterval(checkHealth, 30000);
+    const interval = setInterval(checkHealth, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -352,20 +352,24 @@ export default function AIOSDashboard() {
         const res = await fetch('/api/monitoring');
         if (res.ok) {
           const data = await res.json();
-          // Map nested API response to flat SystemMetrics interface
-          setSystemMetrics({
-            totalConversations: data.conversations?.total ?? 0,
-            totalMessages: data.messages?.total ?? 0,
-            totalMemories: data.memories?.total ?? 0,
-            totalAgents: data.agents?.total ?? 0,
-            activeAgents: data.agents?.active ?? 0,
-            pendingTasks: data.tasks?.pending ?? 0,
-            activeWorkflows: data.workflows?.active ?? 0,
-            installedPlugins: data.plugins?.enabled ?? 0,
-            connectedIntegrations: data.integrations?.connected ?? 0,
-            uptime: data.system?.uptime,
-            memoryUsage: data.system?.ram?.usage,
-            cpuUsage: data.system?.cpu?.usage,
+          setSystemMetrics(prev => {
+            const newData = {
+              totalConversations: data.conversations?.total ?? 0,
+              totalMessages: data.messages?.total ?? 0,
+              totalMemories: data.memories?.total ?? 0,
+              totalAgents: data.agents?.total ?? 0,
+              activeAgents: data.agents?.active ?? 0,
+              pendingTasks: data.tasks?.pending ?? 0,
+              activeWorkflows: data.workflows?.active ?? 0,
+              installedPlugins: data.plugins?.enabled ?? 0,
+              connectedIntegrations: data.integrations?.connected ?? 0,
+              uptime: data.system?.uptime,
+              memoryUsage: data.system?.ram?.usage,
+              cpuUsage: data.system?.cpu?.usage,
+            };
+            // Only update if something changed to prevent unnecessary re-renders
+            if (JSON.stringify(prev) === JSON.stringify(newData)) return prev;
+            return newData;
           });
         }
       } catch {
@@ -373,7 +377,7 @@ export default function AIOSDashboard() {
       }
     };
     fetchMetrics();
-    const interval = setInterval(fetchMetrics, 15000);
+    const interval = setInterval(fetchMetrics, 60000);
     return () => clearInterval(interval);
   }, []);
 
