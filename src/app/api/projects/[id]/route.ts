@@ -208,6 +208,8 @@ export async function PATCH(
     if (body.notes !== undefined) updateData.notes = body.notes
     if (body.tags !== undefined) updateData.tags = normalizeJsonArray(body.tags)
     if (body.dueDate !== undefined) updateData.dueDate = body.dueDate ? new Date(body.dueDate) : null
+    if (body.orchestratorStatus !== undefined) updateData.orchestratorStatus = body.orchestratorStatus
+    if (body.completedAt !== undefined) updateData.completedAt = body.completedAt ? new Date(body.completedAt) : null
 
     const updated = await db.project.update({
       where: { id },

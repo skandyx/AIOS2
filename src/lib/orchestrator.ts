@@ -791,6 +791,80 @@ When you have questions or need clarification, send a message on the communicati
   return messagesCreated
 }
 
+// ─── Auto-Execution Loop ────────────────────────────────────────────────────
+
+const activeExecutionLoops = new Set<string>()
+
+export function startAutoExecution(projectId: string): void {
+  // Prevent duplicate loops for the same project
+  if (activeExecutionLoops.has(projectId)) return
+  activeExecutionLoops.add(projectId)
+
+  const runLoop = async () => {
+    try {
+      while (activeExecutionLoops.has(projectId)) {
+        const project = await db.project.findUnique({
+          where: { id: projectId },
+          include: { tasks: { select: { id: true, status: true } } },
+        })
+
+        if (!project || project.orchestratorStatus !== 'running') {
+          activeExecutionLoops.delete(projectId)
+          break
+        }
+
+        const hasPending = project.tasks.some(t => t.status === 'pending')
+        const hasInProgress = project.tasks.some(t => t.status === 'in_progress')
+
+        if (!hasPending && !hasInProgress) {
+          // All tasks done - mark project as completed
+          const allCompleted = project.tasks.length > 0 && project.tasks.every(t => t.status === 'completed' || t.status === 'cancelled' || t.status === 'failed')
+          if (allCompleted) {
+            await db.project.update({
+              where: { id: projectId },
+              data: { orchestratorStatus: 'completed', status: 'completed', completedAt: new Date() },
+            })
+            const bus = new AgentCommunicationBus(projectId)
+            await bus.broadcast('orchestrator', 'status',
+              `## 🎉 All Tasks Completed!\n\nAll tasks for "${project.name}" have been completed. Project delivered successfully!`,
+              'high', undefined, 'delivery'
+            )
+          }
+          activeExecutionLoops.delete(projectId)
+          break
+        }
+
+        // Execute next task
+        try {
+          const result = await executeAgentTasks(projectId)
+          if (result.error && !result.tasksProcessed) {
+            console.error(`Auto-execution error for ${projectId}:`, result.error)
+            // Wait longer on error
+            await new Promise(r => setTimeout(r, 10000))
+          }
+        } catch (err) {
+          console.error('Auto-execution task error:', err)
+          await new Promise(r => setTimeout(r, 10000))
+        }
+
+        // Small delay between tasks to avoid overwhelming the system
+        await new Promise(r => setTimeout(r, 2000))
+      }
+    } catch (error) {
+      console.error('Auto-execution loop error:', error)
+    } finally {
+      activeExecutionLoops.delete(projectId)
+    }
+  }
+
+  // Start the loop in background
+  runLoop()
+}
+
+export function stopAutoExecution(projectId: string): void {
+  activeExecutionLoops.delete(projectId)
+}
+
 // ─── Phase 4: EXECUTE ────────────────────────────────────────────────────────
 
 async function phaseExecute(
@@ -812,18 +886,12 @@ async function phaseExecute(
   await addTimelineEvent(projectId, 'phase_started', 'Execution phase - agents are working on their assigned tasks', 'execute')
 
   await bus.broadcast('orchestrator', 'status',
-    `## ⚡ Phase 4: EXECUTE\n\nAgents are now executing their assigned tasks.\n\nTasks will be processed in dependency order. The system will monitor progress and handle blockers automatically.\n\nUse the Execute button or poll the API to advance task execution step by step.`,
+    `## ⚡ Phase 4: EXECUTE\n\nAgents are now executing their assigned tasks automatically.\n\nTasks will be processed in dependency order. The system will monitor progress and handle blockers automatically.`,
     'high', undefined, 'execution'
   )
 
-  // Start executing the first task immediately
-  try {
-    executeAgentTasks(projectId).catch(err => {
-      console.error('Initial execution error:', err)
-    })
-  } catch {
-    // Non-critical
-  }
+  // Start auto-execution loop
+  startAutoExecution(projectId)
 }
 
 // ─── Autonomy Features ───────────────────────────────────────────────────────
@@ -1248,18 +1316,8 @@ export async function checkAndAdvancePhases(projectId: string): Promise<{
     await autoReassignBlockedTasks(projectId, bus)
   }
 
-  // Auto-execute next task when project is running
-  const pendingTasks = project.tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length
-  if (project.orchestratorStatus === 'running' && pendingTasks > 0) {
-    try {
-      // Execute next task in background - don't await to avoid blocking the status check
-      executeAgentTasks(projectId).catch(err => {
-        console.error('Auto-execution error:', err)
-      })
-    } catch {
-      // Non-critical
-    }
-  }
+  // Auto-execution is now handled by startAutoExecution() loop,
+  // not by the polling-based checkAndAdvancePhases.
 
   return { currentPhase, shouldReview, shouldDeliver, allCompleted }
 }

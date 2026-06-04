@@ -80,6 +80,7 @@ interface ProjectData {
   repoBranch?: string | null; githubToken?: string | null; localPath?: string | null
   documentation?: string | null; readme?: string | null
   _count?: { tasks: number; projectSkills: number; projectMCPServers: number }
+  _progress?: number
   tasks?: TaskData[]
 }
 
@@ -236,7 +237,7 @@ function buildFileTree(files: ProjectFileData[]): FileTreeNode[] {
 function ProjectCard({ project, onClick }: { project: ProjectData; onClick: () => void }) {
   const sc = STATUS_CONFIG[project.status]; const pc = PRIORITY_CONFIG[project.priority]
   const tech = parseTechStack(project.techStack)
-  const progress = project.tasks ? Math.round((project.tasks.filter(t => t.status === 'done' || t.status === 'completed').length / Math.max(project.tasks.length, 1)) * 100) : 0
+  const progress = project._progress ?? (project.tasks ? Math.round((project.tasks.filter(t => t.status === 'done' || t.status === 'completed').length / Math.max(project.tasks.length, 1)) * 100) : 0)
   const taskCount = project._count?.tasks ?? project.tasks?.length ?? 0
 
   return (
@@ -713,6 +714,78 @@ export default function ProjectsModule() {
                   </Card>
                 </div>
 
+                {/* Review Phase Card - shows when 80%+ tasks completed */}
+                {overallProgress >= 80 && (orchPhase === 'reviewing' || orchPhase === 'running' || orchPhase === 'executing') && (
+                  <Card className="bg-[#0d1117] border-amber-500/30 py-0">
+                    <CardHeader className="pb-2 pt-4 px-4">
+                      <CardTitle className="text-sm text-amber-400 flex items-center gap-2">
+                        <Eye className="size-4 text-amber-400" /> Final Review & Deployment
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-4 space-y-3">
+                      <p className="text-xs text-slate-400">
+                        {overallProgress}% of tasks completed. The project is ready for final review before deployment.
+                      </p>
+                      <div className="flex gap-2">
+                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-8 text-xs"
+                          onClick={async () => {
+                            if (!selectedProjectId) return
+                            // Approve: mark all remaining tasks as completed
+                            const pendingTasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'done')
+                            for (const t of pendingTasks) {
+                              await fetch(`/api/tasks/${t.id}`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ status: 'completed', kanbanColumn: 'done', progress: 100, completedAt: new Date().toISOString() })
+                              })
+                            }
+                            // Update project status
+                            await fetch(`/api/projects/${selectedProjectId}`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ orchestratorStatus: 'completed', status: 'completed', completedAt: new Date().toISOString() })
+                            })
+                            // Send approval message
+                            await fetch(`/api/projects/${selectedProjectId}/agents/messages`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ content: '✅ Final review APPROVED. Project is ready for deployment!', fromRole: 'user', toRole: 'all', type: 'result' })
+                            })
+                            fetchProject(selectedProjectId)
+                          }}>
+                          <ThumbsUp className="size-3" /> Approve & Deploy
+                        </Button>
+                        <Button size="sm" variant="outline" className="border-red-500/30 text-red-400 gap-1 h-8 text-xs"
+                          onClick={async () => {
+                            if (!selectedProjectId) return
+                            await fetch(`/api/projects/${selectedProjectId}/agents/messages`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ content: '❌ Final review REJECTED. Please address the issues and resubmit.', fromRole: 'user', toRole: 'all', type: 'instruction' })
+                            })
+                            fetchProject(selectedProjectId)
+                          }}>
+                          <ThumbsDown className="size-3" /> Reject
+                        </Button>
+                        <Button size="sm" variant="outline" className="border-sky-500/30 text-sky-400 gap-1 h-8 text-xs"
+                          onClick={async () => {
+                            const instruction = prompt('Enter reassignment instructions:')
+                            if (instruction && selectedProjectId) {
+                              await fetch(`/api/projects/${selectedProjectId}/agents/messages`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ content: `🔄 Reassign: ${instruction}`, fromRole: 'user', toRole: 'all', type: 'instruction' })
+                              })
+                              fetchProject(selectedProjectId)
+                            }
+                          }}>
+                          <UserPlus className="size-3" /> Reassign
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Quick Stats */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
@@ -768,7 +841,7 @@ export default function ProjectsModule() {
                 </Select>
                 <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-slate-500" onClick={() => selectedProjectId && fetchProject(selectedProjectId)}><RefreshCw className="size-3" /></Button>
               </div>
-              <ScrollArea className="flex-1 p-3 overflow-y-auto max-h-[calc(100vh-280px)]">
+              <ScrollArea className="flex-1 p-3 overflow-hidden">
                 <div className="space-y-2 max-w-3xl mx-auto">
                   {filteredMessages.map(msg => {
                     const mtConfig = MESSAGE_TYPE_CONFIG[msg.type] || MESSAGE_TYPE_CONFIG.status
@@ -790,18 +863,26 @@ export default function ProjectsModule() {
                           {msg.fromRole !== 'user' && msg.type === 'instruction' && (
                           <div className="flex items-center gap-1 mt-2">
                             <Button variant="ghost" size="sm" className="h-5 text-[9px] gap-1 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 px-1.5" onClick={async () => {
-                              // Approve: move related pending tasks to in_progress and update kanban
-                              const relatedTasks = tasks.filter(t => t.assigneeId === msg.fromAgentId && (t.status === 'pending' || t.kanbanColumn === 'planned'))
+                              // Approve: move related pending/planned tasks to in_progress and update kanban
+                              const agentId = msg.fromAgentId
+                              const agentType = msg.fromAgent?.type
+                              // Find tasks by assigneeId (primary) or by agentType match (secondary)
+                              const relatedTasks = tasks.filter(t => {
+                                if (t.status !== 'pending' && t.status !== 'in_progress' && t.kanbanColumn !== 'planned') return false
+                                // Match by assigneeId
+                                if (agentId && t.assigneeId === agentId) return true
+                                // Match by agent type if assigneeId is null or doesn't match
+                                if (agentType && t.agentType === agentType && (!t.assigneeId || !agentId)) return true
+                                // Fallback: tasks in planned column with no assignee matching the agent type
+                                if (!agentId && agentType && t.kanbanColumn === 'planned' && !t.assigneeId) return true
+                                return false
+                              })
+                              // Optimistically update local state
+                              const updatedTaskIds = new Set(relatedTasks.map(t => t.id))
+                              setTasks(prev => prev.map(t => updatedTaskIds.has(t.id) ? { ...t, status: 'in_progress', kanbanColumn: 'in_progress' } : t))
+                              // Persist all related tasks
                               for (const t of relatedTasks) {
                                 await fetch(`/api/tasks/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'in_progress', kanbanColumn: 'in_progress' }) })
-                              }
-                              // Also try to move tasks by agent type
-                              const agentType = msg.fromAgent?.type
-                              if (agentType) {
-                                const agentTasks = tasks.filter(t => !t.assigneeId && t.kanbanColumn === 'planned' && t.status === 'pending')
-                                for (const t of agentTasks.slice(0, 2)) {
-                                  await fetch(`/api/tasks/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'in_progress', kanbanColumn: 'in_progress' }) })
-                                }
                               }
                               if (selectedProjectId) {
                                 await fetch(`/api/projects/${selectedProjectId}/agents/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: '✅ Approved. Proceed with execution.', fromRole: 'user', toRole: msg.fromAgentId || 'all', type: 'result' }) })
@@ -809,8 +890,18 @@ export default function ProjectsModule() {
                               }
                             }}><ThumbsUp className="size-2.5" /> Approve</Button>
                             <Button variant="ghost" size="sm" className="h-5 text-[9px] gap-1 text-red-500 hover:text-red-400 hover:bg-red-500/10 px-1.5" onClick={async () => {
-                              // Reject: mark related tasks as failed
-                              const relatedTasks = tasks.filter(t => t.assigneeId === msg.fromAgentId && (t.status === 'in_progress' || t.status === 'pending'))
+                              // Reject: mark related tasks as failed/blocked
+                              const agentId = msg.fromAgentId
+                              const agentType = msg.fromAgent?.type
+                              const relatedTasks = tasks.filter(t => {
+                                if (t.status !== 'in_progress' && t.status !== 'pending') return false
+                                if (agentId && t.assigneeId === agentId) return true
+                                if (agentType && t.agentType === agentType && (!t.assigneeId || !agentId)) return true
+                                return false
+                              })
+                              // Optimistically update local state
+                              const rejectedTaskIds = new Set(relatedTasks.map(t => t.id))
+                              setTasks(prev => prev.map(t => rejectedTaskIds.has(t.id) ? { ...t, status: 'failed', kanbanColumn: 'blocked', error: 'Rejected by user' } : t))
                               for (const t of relatedTasks) {
                                 await fetch(`/api/tasks/${t.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'failed', kanbanColumn: 'blocked', error: 'Rejected by user' }) })
                               }
@@ -865,10 +956,10 @@ export default function ProjectsModule() {
                       <div className="text-center"><span className="text-lg font-bold text-red-400">{blockedTasks}</span><span className="text-[9px] text-slate-500 block">Blocked</span></div>
                     </div>
                     {(orchPhase === 'running' || orchPhase === 'executing') && tasks.some(t => t.status === 'pending' || t.status === 'in_progress') && (
-                      <Button size="sm" className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-7 text-xs" onClick={async () => {
-                        if (!selectedProjectId) return
-                        try { await fetch(`/api/projects/${selectedProjectId}/execute`, { method: 'POST' }); fetchProject(selectedProjectId) } catch { /* */ }
-                      }}><Zap className="size-3" /> Execute Next Task</Button>
+                      <div className="mt-4 flex items-center gap-2 text-xs text-emerald-400">
+                        <Loader2 className="size-3 animate-spin" />
+                        <span>Auto-executing tasks... {tasks.filter(t => t.status === 'in_progress').length} active</span>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -879,7 +970,7 @@ export default function ProjectsModule() {
                   <CardContent className="px-4 pb-4 space-y-2">
                     {agents.map(a => {
                       const aTasks = tasks.filter(t => t.assigneeId === a.id)
-                      const done = aTasks.filter(t => t.status === 'completed').length
+                      const done = aTasks.filter(t => t.status === 'completed' || t.status === 'done').length
                       const inProg = aTasks.filter(t => t.status === 'in_progress').length
                       const prog = aTasks.length > 0 ? Math.round((done / aTasks.length) * 100) : 0
                       const ac = getAgentColor(a.type)
@@ -929,10 +1020,19 @@ export default function ProjectsModule() {
                   {KANBAN_COLUMNS.map(col => {
                     const colTasks = tasks.filter(t => {
                       const kCol = t.kanbanColumn || 'backlog'
-                      // Primary: match by kanbanColumn field (set by orchestrator/executor)
-                      if (kCol === col.id) return true
-                      // Fallback: for completed tasks that might not have kanbanColumn updated
-                      if (col.id === 'done' && t.status === 'completed') return true
+                      // Status-based routing takes priority - ensures tasks appear in correct column
+                      // regardless of stale kanbanColumn values from the orchestrator
+                      if (col.id === 'done' && (t.status === 'completed' || t.status === 'done')) return true
+                      if (col.id === 'in_progress' && t.status === 'in_progress') return true
+                      if (col.id === 'blocked' && (t.status === 'failed' || t.status === 'blocked')) return true
+                      if (col.id === 'review' && t.status === 'review') return true
+                      // For pending tasks, use kanbanColumn field or default to backlog
+                      if (col.id === 'planned' && t.status === 'pending' && kCol === 'planned') return true
+                      if (col.id === 'backlog' && t.status === 'pending' && kCol === 'backlog') return true
+                      // Catch-all: tasks with no matching status go to their kanbanColumn
+                      if (t.status !== 'completed' && t.status !== 'done' && t.status !== 'in_progress' && t.status !== 'failed' && t.status !== 'blocked' && t.status !== 'review') {
+                        if (kCol === col.id) return true
+                      }
                       return false
                     })
                     const isOverWip = col.wip > 0 && colTasks.length > col.wip

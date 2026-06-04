@@ -16,11 +16,46 @@ function safeJsonParse(text: string): unknown {
     try { return JSON.parse(codeBlockMatch[1].trim()) } catch {}
   }
 
-  // Try finding array/object
+  // Try finding array with bracket repair
   const firstBracket = text.indexOf('[')
   const lastBracket = text.lastIndexOf(']')
   if (firstBracket !== -1 && lastBracket > firstBracket) {
-    try { return JSON.parse(text.substring(firstBracket, lastBracket + 1)) } catch {}
+    const substr = text.substring(firstBracket, lastBracket + 1)
+    try { return JSON.parse(substr) } catch {}
+    // Try repairing: close unclosed strings and brackets
+    try {
+      let repaired = substr
+      // Count open/close brackets
+      const openBrackets = (repaired.match(/\[/g) || []).length
+      const closeBrackets = (repaired.match(/\]/g) || []).length
+      const openBraces = (repaired.match(/\{/g) || []).length
+      const closeBraces = (repaired.match(/\}/g) || []).length
+      // Add missing closers
+      for (let i = 0; i < openBraces - closeBraces; i++) repaired += '}'
+      for (let i = 0; i < openBrackets - closeBrackets; i++) repaired += ']'
+      return JSON.parse(repaired)
+    } catch {}
+  }
+
+  // Try extracting individual objects from text (for arrays of findings)
+  const objectMatches = text.match(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g)
+  if (objectMatches && objectMatches.length > 0) {
+    const objects: unknown[] = []
+    for (const objStr of objectMatches) {
+      try {
+        objects.push(JSON.parse(objStr))
+      } catch {
+        // Try with repair
+        try {
+          let repaired = objStr
+          const openB = (repaired.match(/\{/g) || []).length
+          const closeB = (repaired.match(/\}/g) || []).length
+          for (let i = 0; i < openB - closeB; i++) repaired += '}'
+          objects.push(JSON.parse(repaired))
+        } catch {}
+      }
+    }
+    if (objects.length > 0) return objects
   }
 
   const firstBrace = text.indexOf('{')

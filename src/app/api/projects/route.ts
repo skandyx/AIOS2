@@ -149,11 +149,32 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    // Compute progress for each project efficiently
+    const projectIds = projects.map(p => p.id)
+    const taskStats = await db.task.groupBy({
+      by: ['projectId'],
+      where: { projectId: { in: projectIds } },
+      _count: { _all: true },
+    })
+    const completedStats = await db.task.groupBy({
+      by: ['projectId'],
+      where: { projectId: { in: projectIds }, status: { in: ['completed', 'done'] } },
+      _count: { _all: true },
+    })
+
+    const totalMap = new Map(taskStats.map(s => [s.projectId, s._count._all]))
+    const completedMap = new Map(completedStats.map(s => [s.projectId, s._count._all]))
+
     // Map category back to display format for the frontend
-    const mapped = projects.map((p) => ({
-      ...p,
-      category: categoryToDisplay(p.category),
-    }))
+    const mapped = projects.map((p) => {
+      const totalTasks = totalMap.get(p.id) ?? 0
+      const completedCount = completedMap.get(p.id) ?? 0
+      return {
+        ...p,
+        category: categoryToDisplay(p.category),
+        _progress: totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0,
+      }
+    })
 
     return NextResponse.json(mapped)
   } catch (error) {
